@@ -1,0 +1,14 @@
+FROM kitware/viame:gpu-algorithms-default
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml README.md LICENSE_NOTES.md alembic.ini ./
+COPY app ./app
+COPY scripts ./scripts
+
+RUN python3 -m pip install --break-system-packages --no-cache-dir .
+
+CMD ["python3", "-m", "app.workers.processing_worker"]

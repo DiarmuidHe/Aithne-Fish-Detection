@@ -1,0 +1,87 @@
+# =============================================================================
+# Title: Fish Tracker without Motion Fusion
+#
+# Description: Runs VIAME's standalone fish detector and a ByteTrack tracker
+# calibrated for that detector's confidence distribution. This is lighter than
+# tracker_default_fish_fusion.pipe because it omits the motion-fusion RF-DETR
+# branch. Runtime settings can override the values below.
+# =============================================================================
+
+config _pipeline:_edge
+  :capacity                                    5
+
+config _scheduler
+  :type                                        pythread_per_process
+
+# ============================= INPUT FRAME LIST ==============================
+
+include common_default_input_with_downsampler.pipe
+
+# ================================= DETECTOR ==================================
+
+include common_fish_detector_box_only.pipe
+
+connect from downsampler.output_1
+        to   detector_input.image
+
+process detector_writer
+  :: detected_object_output
+  :file_name                                   computed_detections.csv
+  :writer:type                                 viame_csv
+
+connect from detector_output.detected_object_set
+        to   detector_writer.detected_object_set
+connect from downsampler.output_2
+        to   detector_writer.image_file_name
+connect from downsampler.timestamp
+        to   detector_writer.timestamp
+
+# =============================== CORE TRACKER ================================
+
+process tracker
+  :: track_objects
+  :track_objects:type                          bytetrack
+
+  block track_objects:bytetrack
+    :high_thresh                               0.45
+    :low_thresh                                0.10
+    :match_thresh                              0.98
+    :second_match_thresh                       0.98
+    :unconfirmed_match_thresh                  0.98
+    :track_buffer                              30
+    :new_track_thresh                          0.50
+    :std_weight_position                       0.26666666666666666
+    :std_weight_velocity                       0.17804493814764857
+  endblock
+
+connect from downsampler.output_1
+        to   tracker.image
+connect from downsampler.timestamp
+        to   tracker.timestamp
+connect from detector_output.detected_object_set
+        to   tracker.detected_object_set
+
+# ================================ OUTPUT DATA ================================
+
+process track_tot_averager
+  :: refine_tracks
+  :refiner:type                                average_tot
+  :refiner:average_tot:tot_option              weighted_average
+
+process track_writer
+  :: write_object_track
+  :file_name                                   computed_tracks.csv
+  :writer:type                                 viame_csv
+  :writer:viame_csv:stream_identifier          input_list.txt
+  :writer:viame_csv:tot_option                 detection
+
+connect from tracker.object_track_set
+        to   track_tot_averager.object_track_set
+connect from track_tot_averager.object_track_set
+        to   track_writer.object_track_set
+connect from downsampler.timestamp
+        to   track_writer.timestamp
+connect from downsampler.output_2
+        to   track_writer.image_file_name
+
+# -- end of file --

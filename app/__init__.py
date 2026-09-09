@@ -1,0 +1,2 @@
+"""Fish Monitor backend package."""
+

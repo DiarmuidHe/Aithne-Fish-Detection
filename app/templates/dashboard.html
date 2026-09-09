@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b4d52">
+    <title>{{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/dashboard.css') }}?v=0.4.0">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" role="img">
+          <path d="M10 33c10-15 27-18 40-5l8-8v26l-8-8C36 51 20 48 10 33Z"></path>
+          <circle cx="43" cy="30" r="2.5"></circle>
+        </svg>
+      </div>
+      <div>
+        <p class="eyebrow">Aithne monitoring</p>
+        <h1>{{ app_name }}</h1>
+      </div>
+      <button id="refresh-button" class="button button-quiet topbar-action" type="button">Refresh</button>
+    </header>
+
+    <main class="page-shell">
+      <section id="mode-banner" class="mode-banner" aria-live="polite">
+        <div>
+          <span id="mode-badge" class="mode-badge">Checking mode</span>
+          <strong id="mode-title">Connecting to Fish Monitor…</strong>
+          <p id="mode-copy">Checking the database and processing worker.</p>
+        </div>
+        <code id="compose-command"></code>
+      </section>
+
+      <section class="upload-card" aria-labelledby="upload-heading">
+        <div>
+          <p class="eyebrow">New footage</p>
+          <h2 id="upload-heading">Upload an underwater video</h2>
+          <p>MP4, MOV, AVI, or MKV. Uploading stores the file; you choose when processing starts.</p>
+        </div>
+        <form id="upload-form" class="upload-form">
+          <label class="file-picker" for="video-file">
+            <input id="video-file" name="file" type="file" accept=".mp4,.mov,.avi,.mkv,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska" required>
+            <span class="file-picker-title">Choose a video</span>
+            <span id="file-name" class="file-picker-copy">No file selected</span>
+          </label>
+          <label class="camera-field" for="camera-id">
+            <span>Camera ID <small>optional</small></span>
+            <input id="camera-id" name="camera_id" type="text" maxlength="128" placeholder="e.g. River camera 2">
+          </label>
+          <button id="upload-button" class="button button-primary" type="submit">Upload video</button>
+        </form>
+        <p id="upload-message" class="form-message" role="status"></p>
+      </section>
+
+      <section class="analytics-overview" aria-labelledby="analytics-heading">
+        <div class="section-heading compact"><div><p class="eyebrow">Across the library</p><h2 id="analytics-heading">Fish activity</h2></div>
+          <a class="text-link" href="/exports/batch.csv">Export all summaries</a></div>
+        <p class="chart-note">Accepted totals include review decisions. Counts represent tracks, not unique biological fish.</p>
+        <div class="chart-grid"><div><h3>Accepted fish per video</h3><div id="fish-chart" class="bar-chart"></div></div>
+          <div><h3>Accepted detections per video</h3><div id="detections-chart" class="bar-chart"></div></div></div>
+      </section>
+      <section class="batch-toolbar" aria-label="Batch workflow">
+        <label class="toggle-label"><input id="select-all" type="checkbox">Select all videos</label>
+        <span id="selection-count">0 selected</span>
+        <button id="batch-process" class="button button-primary" disabled>Process selected</button>
+        <button id="batch-annotate" class="button button-secondary" disabled>Generate annotations for selected completed videos</button>
+        <label class="export-choice">CSV <select id="batch-export-kind" aria-label="Batch export type">
+          <option value="summary">Summaries</option><option value="accepted-tracks">Accepted tracks</option>
+          <option value="all-tracks">All tracks</option><option value="detections">Observations</option></select></label>
+        <button id="batch-export" class="button button-quiet" disabled>Export selected</button>
+        <div class="batch-progress"><progress id="batch-progress" max="1" value="0" aria-label="Selected video progress"></progress>
+          <span id="batch-status" role="status">Select videos to begin.</span></div>
+        <ul id="batch-results" hidden></ul>
+      </section>
+      <div class="workspace-grid">
+        <section class="video-panel" aria-labelledby="videos-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Library</p>
+              <h2 id="videos-heading">Videos</h2>
+            </div>
+            <span id="video-count" class="count-pill">0</span>
+          </div>
+          <div id="video-list" class="video-list" aria-live="polite"></div>
+        </section>
+
+        <section id="detail-panel" class="detail-panel" aria-live="polite">
+          <div id="detail-empty" class="empty-state">
+            <div class="empty-icon" aria-hidden="true">◎</div>
+            <h2>Select a video</h2>
+            <p>Choose a video from the library to process it, inspect fish tracks, or create an annotated copy.</p>
+          </div>
+          <div id="detail-content" hidden>
+            <div class="detail-heading">
+              <div>
+                <p id="detail-meta" class="eyebrow"></p>
+                <h2 id="detail-title"></h2>
+              </div>
+              <span id="detail-status" class="status-pill"></span>
+            </div>
+
+            <div id="job-error" class="error-callout" role="alert" hidden>
+              <strong>Processing did not complete</strong>
+              <p id="job-error-copy"></p>
+            </div>
+
+            <div id="processing-note" class="processing-callout" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              <div>
+                <strong id="processing-title">Processing is in progress</strong>
+                <p id="processing-copy">This page updates automatically.</p>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button id="process-button" class="button button-primary" type="button">Start processing</button>
+              <button id="annotate-button" class="button button-secondary" type="button" hidden>Generate annotated video</button>
+              <button id="clips-button" class="button button-secondary" type="button" hidden>Generate fish clips</button>
+            </div>
+
+            <section id="summary-section" class="detail-section" hidden>
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Completed run</p>
+                  <h3>Fish summary</h3>
+                </div>
+              </div>
+              <div id="summary-grid" class="summary-grid"></div>
+              <dl class="run-details">
+                <div><dt>Processing pipeline</dt><dd id="summary-pipeline"></dd></div>
+                <div><dt>Model</dt><dd id="summary-model"></dd></div>
+                <div><dt>VIAME version</dt><dd id="summary-viame"></dd></div>
+              </dl>
+              <nav id="video-exports" class="export-links" aria-label="Video CSV exports"></nav>
+            </section>
+
+            <section id="video-analytics" class="detail-section" hidden>
+              <p class="eyebrow">Observed activity</p><h3>Detections over time</h3>
+              <p class="chart-note">Accepted observations by time window. Empty windows contain no accepted detections.</p>
+              <div id="timeline-chart" class="bar-chart"></div>
+              <div class="chart-grid distributions"><div><h3>Confidence distribution</h3><p class="chart-note">All observations, including rejected tracks</p><div id="confidence-chart" class="bar-chart"></div></div>
+                <div><h3>Track duration</h3><p class="chart-note">All tracks · last minus first observation</p><div id="duration-chart" class="bar-chart"></div></div></div>
+              <p id="analytics-missing" class="chart-note"></p>
+            </section>
+
+            <section id="tracks-section" class="detail-section" hidden>
+              <div class="section-heading compact tracks-heading">
+                <div>
+                  <p class="eyebrow">Database results</p>
+                  <h3>Review fish tracks</h3>
+                </div>
+                <label class="toggle-label">
+                  <input id="show-all-tracks" type="checkbox">
+                  <span>Show low-confidence tracks and other excluded tracks</span>
+                </label>
+              </div>
+              <p class="chart-note">Accept or reject to override VIAME. Needs-review excludes a track; reviewed keeps the threshold decision. Inspect a track to view source footage and recorded observations.</p>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Track</th>
+                      <th>VIAME / Result</th>
+                      <th>Review decision</th>
+                      <th>Detections</th>
+                      <th>First seen</th>
+                      <th>Last seen</th>
+                      <th>Max confidence</th>
+                      <th>Species</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tracks-body"></tbody>
+                </table>
+              </div>
+              <p id="tracks-empty" class="table-empty" hidden>No tracks match this view.</p>
+            </section>
+
+            <section id="annotation-section" class="detail-section" hidden>
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Review</p>
+                  <h3>Annotated video</h3>
+                </div>
+                <a id="download-link" class="text-link" href="#" download>Download MP4</a>
+              </div>
+              <video id="annotation-player" controls preload="metadata"></video>
+              <p class="annotation-note">Boxes are drawn only on frames containing accepted database detections.</p>
+            </section>
+
+            <section id="clips-section" class="detail-section" hidden>
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Review</p>
+                  <h3>Individual fish clips</h3>
+                </div>
+                <span id="clips-count" class="count-pill">0</span>
+              </div>
+              <p class="chart-note">Each clip is a short cropped video that follows one accepted fish track, with lead-in and lead-out around its observations. Generating clips does not change any stored result.</p>
+              <div id="clips-grid" class="clip-grid"></div>
+              <p id="clips-empty" class="table-empty">No fish clips yet. Select <strong>Generate fish clips</strong> to cut one clip per accepted track.</p>
+            </section>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <dialog id="track-inspector" aria-labelledby="inspector-title">
+      <div class="section-heading compact"><h2 id="inspector-title">Track observations</h2><button id="close-inspector" class="button button-quiet">Close</button></div>
+      <p id="inspector-meta"></p><video id="source-player" controls preload="metadata"></video>
+      <div class="inspector-clip">
+        <button id="track-clip-button" class="button button-secondary" type="button">Show cropped clip of this fish</button>
+        <video id="track-clip-player" controls loop muted playsinline preload="metadata" hidden></video>
+      </div>
+      <p class="chart-note">Original footage. Select an observation to seek to its stored frame; coordinates below are the original database boxes.</p>
+      <div class="table-scroll observation-scroll"><table><thead><tr><th>Frame</th><th>Time</th><th>Confidence</th><th>Bounding box (x1, y1, x2, y2)</th></tr></thead><tbody id="observations-body"></tbody></table></div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="{{ url_for('static', path='/dashboard.js') }}?v=0.4.0" defer></script>
+    <script src="{{ url_for('static', path='/product.js') }}?v=0.4.0" defer></script>
+  </body>
+</html>

@@ -1,0 +1,73 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      APP_NAME: Fish Monitor
+      DATABASE_URL: postgresql+psycopg://fish:fish@postgres:5432/fish_monitor
+      AUTO_CREATE_TABLES: "false"
+      UPLOAD_ROOT: /data/uploads
+      JOB_ROOT: /data/jobs
+      OUTPUT_ROOT: /data/outputs
+      VIAME_MOCK: "true"
+      DEPLOYMENT_MODE: mock
+      VIAME_SAMPLE_CSV: app/fixtures/sample_viame_output.csv
+      MIN_FISH_CONFIDENCE: "${MIN_FISH_CONFIDENCE:-0.60}"
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql+psycopg://fish:fish@postgres:5432/fish_monitor
+      AUTO_CREATE_TABLES: "false"
+      UPLOAD_ROOT: /data/uploads
+      JOB_ROOT: /data/jobs
+      OUTPUT_ROOT: /data/outputs
+      VIAME_MOCK: "true"
+      DEPLOYMENT_MODE: mock
+      VIAME_SAMPLE_CSV: app/fixtures/sample_viame_output.csv
+      MIN_FISH_CONFIDENCE: "${MIN_FISH_CONFIDENCE:-0.60}"
+      WORKER_POLL_SECONDS: "2"
+      WORKER_HEARTBEAT_SECONDS: "5"
+      WORKER_STALE_AFTER_SECONDS: "30"
+      JOB_STALE_AFTER_SECONDS: "120"
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: fish_monitor
+      POSTGRES_USER: fish
+      POSTGRES_PASSWORD: fish
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fish -d fish_monitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres_data:

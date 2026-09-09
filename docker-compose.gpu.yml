@@ -1,0 +1,50 @@
+services:
+  api:
+    environment:
+      DEPLOYMENT_MODE: gpu
+      VIAME_MOCK: "false"
+      VIAME_TRACKER_PIPELINE: /app/app/viame_pipelines/tracker_fish_no_motion.pipe
+      VIAME_DOWNSAMPLE_FPS: "${VIAME_DOWNSAMPLE_FPS:-10}"
+      VIAME_FRAME_NUMBER_OFFSET: "-1"
+      VIAME_DETECTOR_SCORE_THRESHOLD: "${VIAME_DETECTOR_SCORE_THRESHOLD:-0.10}"
+      VIAME_TRACKER_HIGH_THRESHOLD: "${VIAME_TRACKER_HIGH_THRESHOLD:-0.45}"
+      VIAME_TRACKER_LOW_THRESHOLD: "${VIAME_TRACKER_LOW_THRESHOLD:-0.10}"
+      VIAME_TRACKER_NEW_TRACK_THRESHOLD: "${VIAME_TRACKER_NEW_TRACK_THRESHOLD:-0.50}"
+      VIAME_TRACKER_BUFFER_FRAMES: "${VIAME_TRACKER_BUFFER_FRAMES:-30}"
+      MODEL_NAME: viame-fish-deim-v2-1024-bytetrack-tuned
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.viame
+    environment:
+      VIAME_MOCK: "false"
+      DEPLOYMENT_MODE: gpu
+      VIAME_ROOT: /opt/noaa/viame
+      VIAME_SETUP_SCRIPT: /opt/noaa/viame/setup_viame.sh
+      VIAME_TRACKER_PIPELINE: /app/app/viame_pipelines/tracker_fish_no_motion.pipe
+      VIAME_DETECTOR_PIPELINE: /opt/noaa/viame/configs/pipelines/detector_default_fish_no_motion.pipe
+      VIAME_DOWNSAMPLE_FPS: "${VIAME_DOWNSAMPLE_FPS:-10}"
+      VIAME_FRAME_NUMBER_OFFSET: "-1"
+      VIAME_DETECTOR_SCORE_THRESHOLD: "${VIAME_DETECTOR_SCORE_THRESHOLD:-0.10}"
+      VIAME_TRACKER_HIGH_THRESHOLD: "${VIAME_TRACKER_HIGH_THRESHOLD:-0.45}"
+      VIAME_TRACKER_LOW_THRESHOLD: "${VIAME_TRACKER_LOW_THRESHOLD:-0.10}"
+      VIAME_TRACKER_NEW_TRACK_THRESHOLD: "${VIAME_TRACKER_NEW_TRACK_THRESHOLD:-0.50}"
+      VIAME_TRACKER_BUFFER_FRAMES: "${VIAME_TRACKER_BUFFER_FRAMES:-30}"
+      MODEL_NAME: viame-fish-deim-v2-1024-bytetrack-tuned
+      VIAME_RUN_COMMAND: >-
+        source "$$VIAME_SETUP_SCRIPT" && kwiver runner
+        -I "$$VIAME_ROOT/configs/pipelines" "$$VIAME_PIPELINE"
+        -s "input:video_filename=$$VIAME_INPUT_VIDEO"
+        -s "input:video_reader:type=vidl_ffmpeg"
+        -s "downsampler:target_frame_rate=$$VIAME_DOWNSAMPLE_FPS"
+        -s "downsampler:renumber_frames=false"
+        -s "detector:detector:onnx:score_thresh=$$VIAME_DETECTOR_SCORE_THRESHOLD"
+        -s "tracker:track_objects:bytetrack:high_thresh=$$VIAME_TRACKER_HIGH_THRESHOLD"
+        -s "tracker:track_objects:bytetrack:low_thresh=$$VIAME_TRACKER_LOW_THRESHOLD"
+        -s "tracker:track_objects:bytetrack:new_track_thresh=$$VIAME_TRACKER_NEW_TRACK_THRESHOLD"
+        -s "tracker:track_objects:bytetrack:track_buffer=$$VIAME_TRACKER_BUFFER_FRAMES"
+        -s "track_writer:file_name=$$VIAME_OUTPUT_CSV"
+    gpus: all
+    volumes:
+      - ./data:/data
