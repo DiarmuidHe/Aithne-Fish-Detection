@@ -11,6 +11,13 @@ from pathlib import Path
 from app.config import Settings
 
 
+def _captured_text(value: str | bytes | None) -> str:
+    """TimeoutExpired carries raw bytes even when the run asked for text mode."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return value or ""
+
+
 class VIAMERunnerError(RuntimeError):
     pass
 
@@ -88,8 +95,8 @@ class VIAMERunner:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            stdout_log_path.write_text(exc.stdout or "", encoding="utf-8")
-            stderr_log_path.write_text(exc.stderr or "", encoding="utf-8")
+            stdout_log_path.write_text(_captured_text(exc.stdout), encoding="utf-8")
+            stderr_log_path.write_text(_captured_text(exc.stderr), encoding="utf-8")
             raise VIAMERunnerError(
                 f"VIAME timed out after {self.settings.viame_timeout_seconds} seconds"
             ) from exc

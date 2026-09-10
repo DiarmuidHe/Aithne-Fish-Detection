@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.api import analytics, batch, exports, jobs, system, tracks, videos
+from app.api import analytics, batch, exports, jobs, live, system, tracks, videos
 from app.config import get_settings
 from app.db.database import init_db
 
@@ -42,6 +42,7 @@ app.include_router(system.router)
 app.include_router(batch.router)
 app.include_router(exports.router)
 app.include_router(analytics.router)
+app.include_router(live.router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)

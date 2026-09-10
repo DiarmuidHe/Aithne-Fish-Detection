@@ -1,4 +1,8 @@
 services:
+  live-worker:
+    extends:
+      service: worker
+
   api:
     environment:
       DEPLOYMENT_MODE: gpu

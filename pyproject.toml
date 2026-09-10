@@ -17,6 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+live = [
+    "opencv-python-headless>=4.10.0.84",
+    "yt-dlp>=2025.1.26",
+]
 annotate = [
     "opencv-python-headless>=4.10.0.84",
 ]

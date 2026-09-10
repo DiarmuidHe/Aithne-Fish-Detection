@@ -13,6 +13,6 @@ COPY pyproject.toml README.md LICENSE_NOTES.md alembic.ini ./
 COPY app ./app
 COPY scripts ./scripts
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[live]"
 
 CMD ["python", "-m", "app.workers.processing_worker"]

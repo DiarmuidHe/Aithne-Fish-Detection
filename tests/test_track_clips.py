@@ -69,7 +69,7 @@ class _StubTrack:
 
 
 def test_clip_plan_pads_crops_and_follows_the_fish_between_reported_frames():
-    settings = Settings(clip_padding_seconds=0.5, clip_zoom_margin=2.0, clip_min_crop_pixels=64)
+    settings = Settings(_env_file=None, clip_padding_seconds=0.5, clip_zoom_margin=2.0, clip_min_crop_pixels=64)
     detections = [
         _StubDetection(10, 100.0, 100.0, 140.0, 130.0),
         _StubDetection(14, 200.0, 160.0, 240.0, 190.0),
@@ -95,7 +95,7 @@ def test_clip_plan_pads_crops_and_follows_the_fish_between_reported_frames():
 
 
 def test_clip_plan_keeps_the_crop_inside_the_frame_at_the_edges():
-    settings = Settings(clip_padding_seconds=0.0, clip_zoom_margin=3.0, clip_min_crop_pixels=64)
+    settings = Settings(_env_file=None, clip_padding_seconds=0.0, clip_zoom_margin=3.0, clip_min_crop_pixels=64)
     detections = [_StubDetection(4, 600.0, 10.0, 636.0, 40.0)]
 
     plan = _build_plan(_StubTrack(), detections, 640, 360, 10.0, settings)

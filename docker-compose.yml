@@ -1,9 +1,31 @@
+x-fishial-environment: &fishial-environment
+  FISHIAL_ENABLED: "${FISHIAL_ENABLED:-false}"
+  FISHIAL_API_BASE_URL: "${FISHIAL_API_BASE_URL:-https://api-recognition.fishial.ai/v2}"
+  FISHIAL_CLIENT_ID: "${FISHIAL_CLIENT_ID:-}"
+  FISHIAL_CLIENT_SECRET: "${FISHIAL_CLIENT_SECRET:-}"
+  FISHIAL_REQUEST_TIMEOUT_SECONDS: "${FISHIAL_REQUEST_TIMEOUT_SECONDS:-30}"
+  FISHIAL_DEFAULT_FRAMES_PER_FISH: "${FISHIAL_DEFAULT_FRAMES_PER_FISH:-5}"
+  FISHIAL_MAX_FISH_PER_SESSION: "${FISHIAL_MAX_FISH_PER_SESSION:-20}"
+  FISHIAL_MIN_FRAME_CONFIDENCE: "${FISHIAL_MIN_FRAME_CONFIDENCE:-0.70}"
+  FISHIAL_MIN_CROP_PIXELS: "${FISHIAL_MIN_CROP_PIXELS:-96}"
+  FISHIAL_EDGE_MARGIN_PIXELS: "${FISHIAL_EDGE_MARGIN_PIXELS:-4}"
+  FISHIAL_CROP_MARGIN: "${FISHIAL_CROP_MARGIN:-1.15}"
+  FISHIAL_BLUR_MIN_VARIANCE: "${FISHIAL_BLUR_MIN_VARIANCE:-0}"
+  FISHIAL_MIN_FRAME_SEPARATION_SECONDS: "${FISHIAL_MIN_FRAME_SEPARATION_SECONDS:-0.6}"
+  FISHIAL_MIN_FRAMES_TO_VOTE: "${FISHIAL_MIN_FRAMES_TO_VOTE:-3}"
+  FISHIAL_MIN_VOTES: "${FISHIAL_MIN_VOTES:-3}"
+  FISHIAL_VOTE_RATIO: "${FISHIAL_VOTE_RATIO:-0.6}"
+  FISHIAL_MIN_SPECIES_SCORE: "${FISHIAL_MIN_SPECIES_SCORE:-0.5}"
+  FISHIAL_MIN_FRAME_MARGIN: "${FISHIAL_MIN_FRAME_MARGIN:-0}"
+  FISHIAL_MAX_API_RETRIES: "${FISHIAL_MAX_API_RETRIES:-2}"
+
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     environment:
+      <<: *fishial-environment
       APP_NAME: Fish Monitor
       DATABASE_URL: postgresql+psycopg://fish:fish@postgres:5432/fish_monitor
       AUTO_CREATE_TABLES: "false"
@@ -14,6 +36,13 @@ services:
       DEPLOYMENT_MODE: mock
       VIAME_SAMPLE_CSV: app/fixtures/sample_viame_output.csv
       MIN_FISH_CONFIDENCE: "${MIN_FISH_CONFIDENCE:-0.60}"
+      LIVE_MONITOR_ENABLED: "${LIVE_MONITOR_ENABLED:-false}"
+      CORAL_CITY_URL: "${CORAL_CITY_URL:-https://www.coralcitycamera.com/}"
+      LIVE_SOURCE_REGISTRY: "${LIVE_SOURCE_REGISTRY:-[]}"
+      LIVE_DEFAULT_SOURCE_KEY: "${LIVE_DEFAULT_SOURCE_KEY:-coral-city}"
+      LIVE_LOST_TRACK_SECONDS: "${LIVE_LOST_TRACK_SECONDS:-10}"
+      LIVE_ACTIVITY_WINDOW_SECONDS: "${LIVE_ACTIVITY_WINDOW_SECONDS:-60}"
+      LIVE_WORKER_STALE_SECONDS: "${LIVE_WORKER_STALE_SECONDS:-120}"
     volumes:
       - ./data:/data
     ports:
@@ -45,6 +74,20 @@ services:
       WORKER_HEARTBEAT_SECONDS: "5"
       WORKER_STALE_AFTER_SECONDS: "30"
       JOB_STALE_AFTER_SECONDS: "120"
+      LIVE_MONITOR_ENABLED: "${LIVE_MONITOR_ENABLED:-false}"
+      # The session row carries the camera URL; the worker needs the registry only
+      # to name the camera in its logs and reconnect messages.
+      LIVE_SOURCE_REGISTRY: "${LIVE_SOURCE_REGISTRY:-[]}"
+      LIVE_LOST_TRACK_SECONDS: "${LIVE_LOST_TRACK_SECONDS:-10}"
+      LIVE_SEGMENT_SECONDS: "${LIVE_SEGMENT_SECONDS:-2}"
+      LIVE_FPS: "${LIVE_FPS:-5}"
+      LIVE_RETRY_SECONDS: "${LIVE_RETRY_SECONDS:-3}"
+      LIVE_MAX_RETRY_SECONDS: "${LIVE_MAX_RETRY_SECONDS:-30}"
+      LIVE_MAX_RETRIES: "${LIVE_MAX_RETRIES:-10}"
+      LIVE_READ_TIMEOUT_SECONDS: "${LIVE_READ_TIMEOUT_SECONDS:-20}"
+      LIVE_DETECTOR_TIMEOUT_SECONDS: "${LIVE_DETECTOR_TIMEOUT_SECONDS:-60}"
+      LIVE_WORKER_STALE_SECONDS: "${LIVE_WORKER_STALE_SECONDS:-120}"
+      LIVE_MAX_PENDING_SEGMENTS: "${LIVE_MAX_PENDING_SEGMENTS:-3}"
     volumes:
       - ./data:/data
     depends_on:
@@ -52,6 +95,15 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+
+  live-worker:
+    extends:
+      service: worker
+    profiles: [live]
+    environment:
+      <<: *fishial-environment
+    command: ["python3", "-m", "app.workers.live_worker"]
+    stop_grace_period: 100s
 
   postgres:
     image: postgres:16

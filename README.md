@@ -511,21 +511,315 @@ Processing is retry-safe at the video-result level: before inserting parsed resu
 run, the worker deletes existing tracks/detections for that video. Each worker run writes to a unique
 UUID directory under `JOB_ROOT`, so logs and CSV output are not overwritten.
 
-## Live-Camera Compatibility
+## Live camera monitoring
 
-Live RTSP ingestion is not implemented in v1. The intended future path is:
+Set `LIVE_MONITOR_ENABLED=true` in `.env`, then start the optional live worker with the GPU deployment:
 
-```text
-RTSP camera
--> FFmpeg
--> 5-30 minute MP4 chunks
--> processing queue
--> VIAME
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile live up --build -d
 ```
 
-The service layer already separates video registration from HTTP upload through
-`register_video_from_path`, so future chunk recorders can register filesystem videos without going
-through the upload endpoint.
+Open the dashboard's **Live monitoring** panel, pick a camera, and select **Start monitoring**. The panel refreshes
+every two seconds with an annotated camera snapshot, rolling activity, processing lag, and the latest
+50 finalized fish histories. **Stop** finishes active histories and releases the camera connection.
+The API queues work; the separate live worker must be running. Mock mode deliberately rejects live
+monitoring so fixture detections are never presented as camera observations. Batch uploads and
+processing continue through the existing worker.
+
+For a local installation, install `pip install -e '.[live]'`, provide FFmpeg with libx264 on PATH and
+a working VIAME installation, run `alembic upgrade head`, and run
+`python -m app.workers.live_worker` alongside the API. Set `VIAME_MOCK=false` and
+`LIVE_MONITOR_ENABLED=true` in both processes. The Docker API applies migrations through `0006_live_species_id`
+on startup.
+
+Four cameras ship in the registry, and the dashboard dropdown selects which one the pipeline
+analyses:
+
+| Key | Label | Source |
+| --- | --- | --- |
+| `coral-city` | Coral City Camera | Miami, Florida - page scrape plus yt-dlp |
+| `smartbay-cam1` | SmartBay Cam 1 | Galway Bay, Ireland - direct HLS |
+| `smartbay-cam2` | SmartBay Cam 2 | Galway Bay, Ireland - direct HLS |
+| `smartbay-cam3` | SmartBay Cam 3 (ANERIS EMUAS) | Galway Bay, Ireland - direct HLS |
+
+The SmartBay streams come from the Marine Institute SmartBay Observatory in Galway Bay and are
+delivered via HEAnet; the observatory publishes them at <https://smartbay.marine.ie/>. A camera can
+be reachable while publishing nothing, which is reported as "online but not currently broadcasting"
+rather than an FFmpeg failure.
+
+**Only one camera runs at a time.** The live worker runs one session to completion, and there is one
+GPU, so the dropdown chooses the camera for the *next* session. Starting a second camera while one is
+running returns 409 naming the running camera; switching means stopping first. The selector is
+disabled while a session is open, and a running session pins the selector for every browser tab.
+
+The registry is administrator configuration. `LIVE_SOURCE_REGISTRY` overrides it with a JSON array of
+`{key, label, url, location}` objects (unset, or `[]`, keeps the cameras that ship in code),
+`LIVE_DEFAULT_SOURCE_KEY` (default `coral-city`) picks the preselected camera, and `CORAL_CITY_URL`
+still overrides the URL of the `coral-city` entry so existing `.env` files keep working. Keys must match `^[a-z0-9-]{1,64}$` and are unique; the settings
+load fails otherwise. The API accepts a camera **key** only and answers 404 for an unknown key -
+an operator-supplied URL would make FFmpeg and yt-dlp an SSRF sink.
+
+The resolver returns a configured `.m3u8` URL unchanged (after checking the playlist advertises a
+stream), and otherwise follows camera embeds and uses yt-dlp for hosted players such as YouTube,
+refreshing expiring media URLs on reconnect. If a provider changes or restricts access, status
+reports a resolution failure naming that camera. Update yt-dlp (and install its required JavaScript
+runtime if requested by the provider), or configure an administrator-supplied direct HTTP(S) HLS URL.
+Signed media URLs are never logged or returned by the API.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `LIVE_SOURCE_REGISTRY` | four cameras | JSON array of selectable cameras (`key`, `label`, `url`, `location`) |
+| `LIVE_DEFAULT_SOURCE_KEY` | `coral-city` | Camera preselected in the dashboard |
+| `CORAL_CITY_URL` | `https://www.coralcitycamera.com/` | Overrides the `coral-city` entry's URL |
+| `LIVE_LOST_TRACK_SECONDS` | `10` | Finalize after this interval without an observation |
+| `LIVE_SEGMENT_SECONDS` | `2` | Continuous FFmpeg capture chunk duration |
+| `LIVE_FPS` | `5` | Capture and VIAME sampling rate; capture is scaled to fit 1280×720 |
+| `LIVE_ACTIVITY_WINDOW_SECONDS` | `60` | Dashboard rolling window |
+| `LIVE_RETRY_SECONDS` / `LIVE_MAX_RETRY_SECONDS` | `3` / `30` | Exponential reconnect delay bounds |
+| `LIVE_MAX_RETRIES` | `10` | Consecutive retries before failing the session |
+| `LIVE_READ_TIMEOUT_SECONDS` | `20` | Source resolution/read timeout |
+| `LIVE_DETECTOR_TIMEOUT_SECONDS` | `60` | Maximum VIAME time per chunk |
+| `LIVE_WORKER_STALE_SECONDS` | `120` | Recover abandoned sessions on worker startup/poll |
+| `LIVE_MAX_PENDING_SEGMENTS` | `3` | Backlog retained when inference falls behind |
+| `LIVE_SCRATCH_ROOT` | system temp dir | Short-lived per-frame crop spool; keep it on fast local disk |
+
+Size `LIVE_SEGMENT_SECONDS` against your VIAME startup cost. Every chunk starts a fresh pipeline, and
+that startup dominates: on the reference GPU box it is about 12 seconds before any frame is analyzed.
+A chunk shorter than the time it takes to analyze means the worker never keeps up and
+`dropped_segments` climbs, so it sees only samples of the camera; a chunk comfortably longer gives
+continuous coverage at the price of latency. Sampling rate is the other half of the budget: on a busy
+reef `LIVE_FPS=5` cost about 30 seconds per 20-second chunk, while `LIVE_FPS=2` cost about 17 seconds
+and found nearly the same distinct fish. Measure one chunk on your own footage, then set the segment
+length above the measured time and `LIVE_DETECTOR_TIMEOUT_SECONDS` well above it (cold starts are
+slower). This deployment uses 60-second chunks at 2 fps with a 180-second timeout: on its GPU a
+60-second chunk costs about 37 seconds, so the worker stays ahead while the annotated view
+trails the camera by a chunk plus its inference time.
+
+Keep `LIVE_SCRATCH_ROOT` on local disk. Each detection spools an annotated crop frame, and small-file
+writes to a bound volume are slow enough to decide whether inference keeps up: 420 crop writes take
+about 13 seconds on a Windows bind mount against 0.3 seconds on container-local disk. Only finished
+crops and clips are written under `OUTPUT_ROOT`; the spool is discarded once a track is finalized.
+
+Lost-track timing uses capture timestamps. In-flight inference is applied before expiry, so visible
+finalization is delayed by chunking/inference latency. The annotated view updates per analyzed chunk;
+it is not a zero-latency broadcast. Keep an eye on lag and skipped segments: slow inference can miss
+activity. VIAME IDs are local to a chunk; spatial/species association carries tracks between chunks.
+These are tracking histories, not guaranteed identities of biological fish.
+
+Annotated crops and cropped MP4 clips use the existing track colors, box labels, and crop settings.
+Outputs live under `OUTPUT_ROOT/live/<session>/<track>/`; temporary source chunks are removed after
+processing and temporary crop frames after successful clip rendering. Final media and database
+observations are retained, so provision storage for long monitoring runs. A render failure preserves
+the crop and detections and is reported on the track. Failed VIAME runs retain diagnostic logs under
+the session's `inference` directory. A crashed worker's histories are finalized when
+a live worker next recovers its stale session; start a new session to resume monitoring.
+
+### Optional Fishial AI species identification
+
+Set `FISHIAL_ENABLED=true`, `FISHIAL_CLIENT_ID`, and `FISHIAL_CLIENT_SECRET` in the
+API and live worker environment (Compose forwards these from `.env`). Credentials come
+from Fishial. The feature is off by default; enabling it without credentials fails configuration
+validation. Before starting, set **Identify species for the first N fish** (0 = off) and
+**Clear frames per fish** beside the camera selector. The browser remembers N. Controls lock
+while a session is open, and unconfigured deployments hide them and reject nonzero N with 409.
+The per-session frame override accepts 1–20; choosing fewer than the configured voting minimum
+intentionally produces review required without image calls.
+
+Only clean, expanded crops of already-detected fish go to the third-party **Fishial AI** API,
+and only with both opt-ins. Full frames, annotated crops, letterboxing, camera URLs, and
+operator-supplied images are never submitted. Crops stay in the scratch spool until voting
+finishes, then are deleted. API secrets use redacted settings and do not enter logs/errors.
+If the Fishial API key has a portal upload folder configured, Fishial may also retain submitted
+crops in that collection; configure the third-party account accordingly.
+
+Any track that clears the frame **floor** becomes an unpaid **candidate**: it stages crops
+locally and costs nothing. Candidates are held in a bounded pool (`CANDIDATE_POOL_SIZE`,
+by default several times the fish target), and when the pool is full a stronger track evicts
+the weakest one, deleting its staged crops. Within a candidate, frames are **ranked, not gated**:
+the best `MAX_STAGED_FRAMES_PER_CANDIDATE` are retained by measured crop quality, at most one
+per `MIN_FRAME_SEPARATION_SECONDS` window so the votes stay independent rather than being cast
+by near-duplicate frames of a single moment. A better frame evicts the retained worst.
+
+Nothing is paid for until a track **finalizes**. Selection then ranks the finalized candidates
+by `fishial_quality_score` — a weighted blend of median crop short side, sharpness, detector
+confidence, contrast, colourfulness and retained frame count — rejects anything below
+`QUALITY_FLOOR` with zero image calls, and spends the budget on the best. `species_id_fish_enrolled`
+counts fish actually **selected**, not fish first sighted. Because the session cannot know its
+best fish until it ends, `LATE_RESERVE_FISH` slots are held back until `RESERVE_AFTER_SECONDS`
+have elapsed or shutdown releases them. Too few staged frames still means **Review required**
+with no image calls. The same biological fish can become a new track after loss; the budget
+applies to tracks, not individual animals.
+
+This replaced first-come enrollment, which permanently committed a paid slot on a track's first
+clear frame. Arrival time is uncorrelated with identifiability, and on the reference sessions it
+spent the whole budget on fish that could not produce enough frames to vote.
+
+Each attempted frame has one vote. Ambiguous predictions abstain; zero Fishial fish objects in
+one crop abstains. A response carrying **several** objects is resolved against the target box
+stored when the crop was written — the crop is deliberately centred on the detection, so the
+fish we asked about is known — accepting the best match only when its IoU clears
+`OBJECT_MATCH_MIN_IOU` and beats the runner-up by `OBJECT_MATCH_MIN_MARGIN`; otherwise it
+abstains rather than risk attributing a neighbour's identity.
+
+Ranked candidates are then filtered against the camera's **region** before voting. A camera with
+no configured region filters nothing. Names are matched on `scientificName`, normalised for case
+and whitespace only; there is no fuzzy or genus-level matching, so a near miss abstains. The
+region is frozen on the session at start, so later edits to the camera registry cannot
+retroactively reinterpret a finished session. A unique winning species must meet the minimum vote count,
+the winning-votes / submitted-frames ratio, and the mean winning-score threshold together.
+Failed, interrupted, and ambiguous image attempts remain in the ratio denominator; retries
+never add votes. All failed frames produce `error`, shown as **Review required**.
+
+A track also stops buying frames early, in both directions. **Decided**: the leader already
+satisfies the consensus rule and no distribution of the remaining staged frames could unseat it.
+**Unreachable**: even if every remaining frame voted for the leader, the rule still could not be
+satisfied. **Declining classifier**: `MAX_EMPTY_RESPONSES` consecutive responses named no species
+at all. Calls not made are counted in `species_id_calls_saved` and shown on the dashboard.
+
+The five abstentions are five different operational problems and never collapse into one message:
+`insufficient clear frames` (never staged enough views), `below quality floor` (staged, but not
+worth paying for), `consensus unreachable` (the frames disagreed beyond recovery),
+`classifier returned no candidates` (the model would not name it) and `budget exhausted`. A confident
+result is labelled **Fishial AI**; the VIAME species field remains unchanged. The stored JSON
+includes the full tally, frame numbers, scores, margins, raw responses, and abstention reasons.
+The gallery updates results without replacing playing videos. The session breakdown includes
+counts and mean confidence by identified species, review count, and image-call usage.
+
+**Hard ceiling: `N * M + FISHIAL_MAX_API_RETRIES` image requests per session.**
+`SpeciesIdentifier._reserve()` uses a conditional SQL increment immediately before *every*
+recognition request, including 401/timeout/429/5xx retries, and commits the increment with a
+per-frame attempt journal before sending. Retries also consume a separately derived, durable,
+session-wide retry allowance in that JSON. Auth requests are not image calls. On restart,
+uncertain sends remain spent and their frames abstain; they are never replayed. A crash just
+before sending may conservatively overcount one reservation. Remaining crops stop at the ceiling.
+No prediction table was necessary. Capture, claiming, heartbeat, and uploaded-video processing
+retain their existing behavior. Long provider calls can increase processing lag; bounded
+capture queues still apply. A forced worker kill can prevent completion, but cannot refund calls.
+
+Defaults below use the `FISHIAL_` environment prefix. They favor abstention and bounded spending;
+the model scores are not calibrated probabilities of correctness.
+
+| Setting | Default | Rationale |
+| --- | --- | --- |
+| `ENABLED` | `false` | Requires explicit deployment and session opt-in. |
+| `API_BASE_URL` | `https://api-recognition.fishial.ai/v2` | Current documented HTTPS contract. |
+| `CLIENT_ID`, `CLIENT_SECRET` | unset | No embedded credentials. |
+| `REQUEST_TIMEOUT_SECONDS` | `30` | Bounds each outbound request. |
+| `DEFAULT_FRAMES_PER_FISH` | `5` | Allows agreement across several views; range 1–20. |
+| `MAX_FISH_PER_SESSION` | `20` | Caps operator enrollment; deployment range 1–200. |
+| `MIN_FRAME_CONFIDENCE` | `0.50` | Floor only. At the detector's own threshold; rejects 0% of reference detections. |
+| `MIN_CROP_PIXELS` | `40` | Floor only. Coral City's 10th percentile bbox short side; rejects 9.7% there, 0.5% on SmartBay 3. |
+| `EDGE_MARGIN_PIXELS` | `4` | Rejects fish clipped by the frame edges. |
+| `CROP_MARGIN` | `1.15` | Keeps nearby fins without excessive background; full-frame crops rejected. |
+| `BLUR_MIN_VARIANCE` | `0` | Disabled: no sample-validated blur threshold; tune for the camera. |
+| `MIN_FRAME_SEPARATION_SECONDS` | `0.6` | Spreads views over capture time, including across worker reconstruction. |
+| `MIN_FRAMES_TO_VOTE` | `3` | Prevents guessing from a short glimpse. |
+| `MIN_VOTES` | `3` | Requires repeated agreement. |
+| `VOTE_RATIO` | `0.6` | Requires a majority including failed image attempts in the denominator. |
+| `MIN_SPECIES_SCORE` | `0.5` | Rejects weak winning predictions in addition to agreement. |
+| `MIN_FRAME_MARGIN` | `0` | Optional top-two ambiguity gate; default adds no unvalidated score-gap threshold. |
+| `MAX_API_RETRIES` | `2` | At most two extra image calls across the entire session. |
+| `CANDIDATE_POOL_SIZE` | `0` (auto) | `max(3 x fish_target, fish_target + 8)`, fixed at session start. Staging is free, so keep far more candidates than can be paid for. |
+| `MAX_STAGED_FRAMES_PER_CANDIDATE` | `0` (auto) | `frames_per_fish + 2`. Spare frames cost nothing and give the selector and stop rules room. |
+| `MAX_STAGED_BYTES` | `536870912` | Generous staging is free in API terms, not in disk terms. Weakest candidates are evicted first. |
+| `QUALITY_FLOOR` | `0.0` | Admits everything. The blend's pixel terms are not yet calibrated against stored data; calibrate with the replay harness before raising it. |
+| `QUALITY_WEIGHTS` | see `.env.example` | Crop size and sharpness dominate; detector confidence is weakest because it measures "is this a fish", not "is this crop identifiable". |
+| `LATE_RESERVE_FISH` | `2` | Slots held for fish that arrive late; clamped below the fish target and always released at shutdown. |
+| `RESERVE_AFTER_SECONDS` | `180` | When the reserve opens during a running session. |
+| `MAX_EMPTY_RESPONSES` | `2` | Once a track starts coming back unnamed, the rest almost certainly will too. `0` disables. |
+| `OBJECT_MATCH_MIN_IOU` | `0.5` | Minimum overlap with the stored target box before a multi-object response is attributed to this track. |
+| `OBJECT_MATCH_MIN_MARGIN` | `0.2` | How far the best match must beat the runner-up; below this the frame abstains. |
+| `REGION_FILTER_ENABLED` | `true` | Safe on by default: a camera with no configured region already filters nothing. |
+| `PREPROCESS` | `none` | **Ships off.** No evidence yet that underwater correction helps this classifier; see below. |
+| `CLAHE_CLIP` | `2.0` | Contrast limit when CLAHE is enabled. |
+| `UPSCALE_SHORT_SIDE` | `0` | Disabled. Never downscales and never changes aspect ratio. |
+| `KEEP_STAGED_CROPS` | `false` | Retains fish imagery on the output volume for offline replay. |
+
+#### Tuning identification yield
+
+Every raw Fishial response is persisted in `fishial_votes_json`, so a configuration change can be
+evaluated against real stored data **without spending a single API call**:
+
+```
+python scripts/fishial_replay.py --dry-run --session <session-id>
+```
+
+It re-runs parsing, the multi-object matcher, the regional filter, voting, consensus and the stop
+rules over the stored responses, and reports per track the old outcome versus the new one, plus
+the calls the stop rules would have spent against the calls actually spent. Sweep a threshold with
+`--set`, which accepts any `fishial_*` setting and validates it:
+
+```
+python scripts/fishial_replay.py --dry-run --session <id> --set fishial_max_empty_responses=1
+```
+
+Where to reach for each knob:
+
+- **Nothing is ever staged / everything is "insufficient clear frames"** — the floor is above the
+  data. Measure the detector's confidence and bbox short-side percentiles for that camera and set
+  `MIN_FRAME_CONFIDENCE` and `MIN_CROP_PIXELS` below them. A floor rejecting more than ~25% of
+  detections is doing selection's job and should be lowered.
+- **The wrong fish get identified** — raise `QUALITY_FLOOR` (calibrate it with `--dry-run` first;
+  it starts at 0.0) or widen `CANDIDATE_POOL_SIZE` so selection has more to choose from.
+- **The budget runs out before the interesting fish appear** — raise `LATE_RESERVE_FISH` or lower
+  `RESERVE_AFTER_SECONDS`.
+- **Lots of calls, few answers** — check the `declined` count in `GET /live/{id}/species`. A high
+  count means the model would not name these fish, which is not something a threshold can fix;
+  lower `MAX_EMPTY_RESPONSES` to stop paying for it sooner.
+- **Implausible species appear** — give the camera a `region` in the source registry and add its
+  species list to `app/services/species_region.py`.
+
+`--replay <directory> --max-calls <n>` is the only mode that spends money. It refuses to run
+without an explicit ceiling and prints a running call count. Use it to A/B `PREPROCESS` variants
+over stored crops, which requires `KEEP_STAGED_CROPS=true` on the run that produced them, since
+the scratch wipe otherwise removes them.
+
+**Preprocessing ships off (`PREPROCESS=none`), and should stay off until data says otherwise.**
+Dim, green, low-contrast footage is a plausible reason the classifier declines to name fish, but
+that is a hypothesis, not a measurement: no stored crops exist from any completed session, so no
+A/B has been run. Turn on `KEEP_STAGED_CROPS`, capture a session, then use `--replay` to compare
+variants under a small fixed budget before changing the default.
+
+The adapter follows Fishial's [v2 API reference](https://docs.fishial.ai/api/api_reference)
+and [tutorial](https://docs.fishial.ai/api/api_tutorial), checked on 2026-09-10: JSON credentials
+to `/v2/auth`, a bearer token with a 600-second lifetime, then JPEG bytes directly to
+`/v2/recognize`. Species IDs and certainty values resolve through `definitions[species_id].scientificName`.
+This replaces the implementation prompt's older v1 signed-upload sketch. Token refresh occurs
+before expiry and once after 401, subject to remaining image retry budget. Contract tests use
+`httpx.MockTransport`; no tests contact Fishial, the internet, or cameras.
+
+Migration `0007_live_species_quality` adds three session columns
+(`species_id_candidate_pool_size`, `species_id_calls_saved`, `species_id_region`) and one track
+column (`fishial_quality_score`), and widens the `fishial_state` check constraint to include
+`candidate`. Postgres cannot alter a check constraint in place, so it is dropped and recreated in
+both directions; the downgrade first retires any `candidate` rows to `disabled` so the narrower
+constraint cannot fail on real data.
+
+Migration `0006_live_species_id` adds five session columns (`species_id_enabled`,
+`species_id_fish_target`, `species_id_frames_per_fish`, `species_id_fish_enrolled`,
+`species_id_api_calls`) and six track columns (`fishial_state`, `fishial_species`,
+`fishial_species_confidence`, `fishial_frames_used`, `fishial_votes_json`,
+`fishial_completed_at`), with defaults, a state constraint, and a reversible downgrade.
+`GET /live/sources` includes Fishial availability/defaults; `POST /live/start` accepts
+`species_id_fish_target` and `species_id_frames_per_fish`. Session and track responses include
+progress/results, and `GET /live/{session_id}/species` aggregates the whole session.
+
+Small additions beyond the prompt's file list: Compose passes the same Fishial configuration to
+both relevant services, and stale-worker recovery finishes or abstains outstanding identification
+before removing its scratch crops. Deliberate conservative refinements include rejecting tied
+winners, multiple-fish responses, full-frame crops, and non-HTTPS provider URLs. Call counts are
+reserved before sending (rather than incremented afterwards) to make the crash ceiling reliable.
+
+API: `GET /live/sources` (registry, defaults, and which camera is currently running),
+`POST /live/start` with `{"source": "<key>"}`, `POST /live/{session_id}/stop`,
+`GET /live/latest?source=<key>` (omitted `source` uses the default key), and
+`GET /live/{session_id}/{status,activity,tracks,clips}`. Session payloads carry `source_key` and
+`source_label`.
+Track/clip lists accept `limit` and `offset`; tracks also accept `status=active|finalized`.
+`GET /live/{session_id}/annotated-stream` serves MJPEG; add `?snapshot=true` for the latest JPEG.
+Before the first frame it returns 503 with `Retry-After: 2`.
+`GET /live/tracks/{track_id}/clip` and `/crop` serve generated media. Stopping is asynchronous while
+an in-flight detector exits (bounded by its timeout).
 
 ## Security Defaults
 

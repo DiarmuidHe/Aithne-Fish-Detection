@@ -17,11 +17,16 @@ from app.main import app
 @pytest.fixture
 def test_settings(tmp_path: Path) -> Settings:
     return Settings(
+        _env_file=None,
         database_url="sqlite://",
         upload_root=tmp_path / "uploads",
         job_root=tmp_path / "jobs",
         output_root=tmp_path / "outputs",
+        live_scratch_root=tmp_path / "scratch",
         viame_mock=True,
+        fishial_enabled=False,
+        fishial_client_id=None,
+        fishial_client_secret=None,
         viame_sample_csv=Path("tests/fixtures/sample_viame_output.csv"),
         min_fish_confidence=0.60,
         auto_create_tables=False,
@@ -58,4 +63,3 @@ def client(db_session_factory, test_settings: Settings):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-

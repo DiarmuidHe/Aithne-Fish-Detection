@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -202,3 +203,106 @@ class FishDetection(Base):
     fish_track: Mapped[FishTrack] = relationship(back_populates="detections")
 
     __table_args__ = (Index("ix_fish_detections_track_frame", "fish_track_id", "frame_number"),)
+
+
+LIVE_OPEN_STATUSES = ("queued", "starting", "running", "reconnecting", "stopping")
+
+
+class LiveMonitorSession(Base):
+    __tablename__ = "live_monitor_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_key: Mapped[str] = mapped_column(String(64), default="coral-city", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_frame_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_id: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    snapshot_path: Mapped[str | None] = mapped_column(String(1024))
+    frames_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    dropped_segments: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reconnect_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    species_id_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    species_id_fish_target: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    species_id_frames_per_fish: Mapped[int] = mapped_column(Integer, default=5, server_default="5", nullable=False)
+    species_id_fish_enrolled: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    species_id_api_calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    species_id_candidate_pool_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    species_id_calls_saved: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Frozen at session start so a later edit to the camera registry cannot
+    # retroactively reinterpret a completed session's regional filtering.
+    species_id_region: Mapped[str | None] = mapped_column(String(64))
+
+    __table_args__ = (
+        Index("uq_live_monitor_open_source", "source_key", unique=True,
+              postgresql_where=text("status IN ('queued','starting','running','reconnecting','stopping')"),
+              sqlite_where=text("status IN ('queued','starting','running','reconnecting','stopping')")),
+    )
+
+
+class LiveFishTrack(Base):
+    __tablename__ = "live_fish_tracks"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("live_monitor_sessions.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finalization_reason: Mapped[str | None] = mapped_column(String(32))
+    detection_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    mean_confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    species: Mapped[str | None] = mapped_column(String(256))
+    x1: Mapped[float] = mapped_column(Float, nullable=False)
+    y1: Mapped[float] = mapped_column(Float, nullable=False)
+    x2: Mapped[float] = mapped_column(Float, nullable=False)
+    y2: Mapped[float] = mapped_column(Float, nullable=False)
+    crop_path: Mapped[str | None] = mapped_column(String(1024))
+    clip_path: Mapped[str | None] = mapped_column(String(1024))
+    media_error: Mapped[str | None] = mapped_column(Text)
+    fishial_state: Mapped[str] = mapped_column(String(16), default="disabled", server_default="disabled", nullable=False)
+    fishial_species: Mapped[str | None] = mapped_column(String(256))
+    fishial_species_confidence: Mapped[float | None] = mapped_column(Float)
+    fishial_frames_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    fishial_votes_json: Mapped[str | None] = mapped_column(Text)
+    fishial_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fishial_quality_score: Mapped[float | None] = mapped_column(Float)
+    __table_args__ = (
+        Index("ix_live_tracks_session_status", "session_id", "status"),
+        CheckConstraint(
+            "fishial_state IN ('disabled','candidate','pending','ready','submitted',"
+            "'identified','review_required','error')",
+            name="ck_live_fish_tracks_fishial_state",
+        ),
+    )
+
+    @property
+    def fishial_votes(self) -> dict[str, Any]:
+        try:
+            value = json.loads(self.fishial_votes_json)
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+
+class LiveFishDetection(Base):
+    __tablename__ = "live_fish_detections"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    track_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("live_fish_tracks.id", ondelete="CASCADE"), index=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    frame_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    x1: Mapped[float] = mapped_column(Float, nullable=False)
+    y1: Mapped[float] = mapped_column(Float, nullable=False)
+    x2: Mapped[float] = mapped_column(Float, nullable=False)
+    y2: Mapped[float] = mapped_column(Float, nullable=False)
+    species: Mapped[str | None] = mapped_column(String(256))

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0b4d52">
     <title>{{ app_name }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='/dashboard.css') }}?v=0.4.0">
+    <link rel="stylesheet" href="{{ url_for('static', path='/dashboard.css') }}?v=0.6.0">
   </head>
   <body>
     <header class="topbar">
@@ -30,6 +30,52 @@
           <p id="mode-copy">Checking the database and processing worker.</p>
         </div>
         <code id="compose-command"></code>
+      </section>
+
+      <section id="live-panel" class="analytics-overview" aria-labelledby="live-heading">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">Live monitoring</p><h2 id="live-heading">Live camera</h2></div>
+          <div class="live-controls">
+            <label class="live-source-label" for="live-source">Camera</label>
+            <select id="live-source"></select>
+            <div id="live-species-controls" class="live-species-controls" hidden>
+              <label for="live-species-count">Identify species for the first
+                <input id="live-species-count" type="number" min="0" step="1" value="0" disabled> fish</label>
+              <label for="live-species-frames">Clear frames per fish
+                <input id="live-species-frames" type="number" min="1" max="20" step="1" value="5" disabled></label>
+              <span class="chart-note">0 = off. Sends fish crops to Fishial AI; each frame uses an API call.</span>
+            </div>
+            <button id="live-start" class="button button-primary" type="button" disabled>Start monitoring</button>
+            <button id="live-stop" class="button button-secondary" type="button" disabled>Stop</button>
+          </div>
+        </div>
+        <p id="live-source-hint" class="chart-note" hidden>Stop monitoring to switch to another camera.</p>
+        <p id="live-species-hint" class="chart-note" hidden>Stop monitoring to change species identification.</p>
+        <p id="live-status" role="status" aria-live="polite">Checking live monitoring availability…</p>
+        <p id="live-species-progress" class="chart-note" role="status" hidden></p>
+        <p id="live-error" class="form-message" role="alert" hidden></p>
+        <div class="live-layout">
+          <div>
+            <img id="live-player" class="live-player" alt="Live camera with boxes and labels for detected fish" hidden>
+            <p id="live-placeholder" class="table-empty">Start monitoring to view analyzed camera frames.</p>
+            <p class="chart-note">The annotated view updates after each analyzed segment. Processing lag is shown above. Tracks are observations, not unique biological fish.</p>
+          </div>
+          <div>
+            <div id="live-metrics" class="live-metrics"></div>
+            <h3>Recent fish activity</h3>
+            <div id="live-chart" class="live-chart" role="img" aria-label="No live fish activity yet"></div>
+            <p id="live-window" class="chart-note">Rolling activity window</p>
+          </div>
+        </div>
+        <div class="section-heading compact"><h3>Finalized fish histories</h3><span id="live-clips-count" class="count-pill">0</span></div>
+        <p id="live-gallery-note" class="chart-note">Fish histories finish after about 10 seconds without a detection, or when monitoring stops. Showing the latest 50 histories.</p>
+        <div id="live-gallery" class="clip-grid"></div>
+        <p id="live-gallery-empty" class="table-empty">Finalized fish clips and crops will appear here.</p>
+        <section id="live-species-breakdown" hidden aria-labelledby="live-species-heading">
+          <h3 id="live-species-heading">Session species breakdown · Fishial AI</h3>
+          <ul id="live-species-list" class="live-species-list"></ul>
+          <p id="live-species-summary" class="chart-note"></p>
+        </section>
       </section>
 
       <section class="upload-card" aria-labelledby="upload-heading">
@@ -219,5 +265,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <script src="{{ url_for('static', path='/dashboard.js') }}?v=0.4.0" defer></script>
     <script src="{{ url_for('static', path='/product.js') }}?v=0.4.0" defer></script>
+    <script src="{{ url_for('static', path='/live.js') }}?v=0.7.0" defer></script>
   </body>
 </html>
