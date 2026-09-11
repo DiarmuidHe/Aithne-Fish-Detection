@@ -18,7 +18,7 @@ export function AnnotatedTab({ video }: { video: Video }) {
   }
 
   return (
-    <div className={styles.panel}>
+    <div className={styles.mediaPanel}>
       <video
         className={styles.player}
         controls
@@ -36,7 +36,7 @@ export function AnnotatedTab({ video }: { video: Video }) {
         </AnchorButton>
         <span className="note">Generated {formatDateTime(video.annotated_at)}</span>
       </div>
-      <p className="note">
+      <p className={styles.mediaNote}>
         Boxes are drawn only on frames containing accepted database detections. A later review
         decision clears this copy, so regenerate it after reviewing.
       </p>

@@ -14,6 +14,7 @@ import { Button } from '@/components/base/button';
 import { Check } from '@/components/base/controls';
 import { PanelError } from '@/components/base/feedback';
 import { useToast } from '@/components/base/toast';
+import { AppBarSlot } from '@/components/layout/shell';
 import { UploadIcon } from '@/icons';
 import { useFilters } from '@/hooks/use-filters';
 import { useSelection } from '@/hooks/use-selection';
@@ -100,27 +101,33 @@ export function LibraryRoute() {
       style={{ ['--rail' as string]: `${railWidth}px` }}
       data-detail-open={videoId ? '' : undefined}
     >
+      {/* The bar carries the page identity; the pane below carries the work. */}
+      <AppBarSlot area="context">
+        <span className="num">{formatCount(filtered)}</span>
+        <span>of</span>
+        <span className="num">{formatCount(total)}</span>
+        <span>recordings</span>
+      </AppBarSlot>
+      <AppBarSlot area="actions">
+        <Button variant="primary" size="small" onClick={() => setUploadOpen(true)}>
+          <UploadIcon />
+          Upload
+        </Button>
+      </AppBarSlot>
+
       <div className={styles.listPane}>
         <div className={styles.listHeader}>
-          <div className={styles.headerTop}>
-            <h1 className={styles.headerTitle}>Library</h1>
-            <Button variant="primary" size="small" onClick={() => setUploadOpen(true)}>
-              <UploadIcon />
-              Upload
-            </Button>
-          </div>
-
           <SavedViewsBar query={query} onApply={replace} />
           <FilterBar filters={filters} dispatch={dispatch} facets={facets.data} />
           <FilterChips filters={filters} dispatch={dispatch} />
 
           <div className={styles.resultLine}>
-            <span>
-              <span className={styles.resultCount}>
-                {formatCount(filtered)} of {formatCount(total)}
-              </span>{' '}
-              videos
-              {videos.isFetching ? ' · updating' : ''}
+            <span className={styles.resultText}>
+              <span className={styles.resultCount}>{formatCount(filtered)}</span>
+              {filtered === 1 ? ' recording' : ' recordings'}
+              {videos.isFetching ? (
+                <span className={styles.updating}>updating</span>
+              ) : null}
             </span>
             {rows.length > 0 ? (
               <Check
@@ -181,7 +188,7 @@ export function LibraryRoute() {
             <span className={styles.pagerRange}>
               {formatCount(firstRow)}–{formatCount(lastRow)} of {formatCount(filtered)}
             </span>
-            <span style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+            <span className={styles.pagerControls}>
               <Button
                 size="small"
                 disabled={filters.page <= 1}

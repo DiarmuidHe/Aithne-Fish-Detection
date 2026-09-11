@@ -2,12 +2,12 @@ import { Link } from 'react-router';
 
 import type { VideoListRow } from '@/api/types';
 import { Check } from '@/components/base/controls';
-import { EmptyState, Skeleton, StatusPill } from '@/components/base/feedback';
+import { EmptyState, SkeletonRows, StatusPill } from '@/components/base/feedback';
 import { ActionMenu, ContextMenu, Hint, popupStyles } from '@/components/base/popups';
 import { Scroller } from '@/components/base/table';
 import { Button } from '@/components/base/button';
 import { MoreIcon } from '@/icons';
-import { formatBytes, formatDateTime, formatDuration, plural } from '@/lib/format';
+import { formatBytes, formatDateTime, formatDuration } from '@/lib/format';
 import type { Selection } from '@/hooks/use-selection';
 
 import { REVIEW_STATUS_LABELS } from './filter-state';
@@ -39,12 +39,7 @@ export function VideoList({
   if (loading) {
     return (
       <div className={styles.list}>
-        {Array.from({ length: 8 }, (_, index) => (
-          <div className={styles.skeletonRow} key={index}>
-            <Skeleton width="60%" height={13} />
-            <Skeleton width="40%" height={11} />
-          </div>
-        ))}
+        <SkeletonRows rows={9} height={52} lines={2} />
       </div>
     );
   }
@@ -54,8 +49,8 @@ export function VideoList({
   return (
     <Scroller className={styles.list}>
       <ul>
-        {rows.map((video) => (
-          <li key={video.id}>
+        {rows.map((video, index) => (
+          <li key={video.id} style={{ ['--i' as string]: Math.min(index, 12) }}>
             <VideoRow
               video={video}
               selected={selection.has(video.id)}
@@ -106,6 +101,7 @@ function VideoRow({
         className={styles.rowWrap}
         data-selected={selected || undefined}
         data-current={current || undefined}
+        data-status={video.processing_status}
       >
         <span className={styles.rowCheck}>
           <Check
@@ -125,42 +121,42 @@ function VideoRow({
           </span>
           <span className={styles.rowMeta}>
             <span>{formatDateTime(video.created_at)}</span>
-            <span>·</span>
+            <span className={styles.rowDot} aria-hidden="true" />
             <span>{video.camera_id ?? 'No camera'}</span>
-            <span>·</span>
+            <span className={styles.rowDot} aria-hidden="true" />
             <span className={styles.rowStat}>{formatBytes(video.size_bytes)}</span>
             {video.duration_seconds ? (
               <>
-                <span>·</span>
+                <span className={styles.rowDot} aria-hidden="true" />
                 <span className={styles.rowStat}>{formatDuration(video.duration_seconds)}</span>
               </>
             ) : null}
           </span>
           {video.processing_status === 'completed' ? (
             <span className={styles.rowMeta}>
-              <span className={styles.rowStat}>
-                {plural(video.accepted_track_count, 'fish')}
+              <span className={styles.rowFigure}>
+                <span className={styles.rowFigureValue}>{video.accepted_track_count}</span>
+                fish
               </span>
-              <span>·</span>
-              <span className={styles.rowStat}>
-                {plural(video.detection_count, 'detection')}
+              <span className={styles.rowFigure}>
+                <span className={styles.rowFigureValue}>{video.detection_count}</span>
+                detections
               </span>
               {video.flagged_count > 0 ? (
-                <>
-                  <span>·</span>
-                  <span className={`${styles.rowStat} ${styles.rowFlag}`}>
-                    {video.flagged_count} flagged
-                  </span>
-                </>
+                <span className={`${styles.rowFigure} ${styles.rowFlag}`}>
+                  <span className={styles.rowFigureValue}>{video.flagged_count}</span>
+                  flagged
+                </span>
               ) : null}
               {video.unreviewed_count > 0 ? (
-                <>
-                  <span>·</span>
-                  <span className={styles.rowStat}>{video.unreviewed_count} unreviewed</span>
-                </>
+                <span className={styles.rowFigure}>
+                  <span className={styles.rowFigureValue}>{video.unreviewed_count}</span>
+                  unreviewed
+                </span>
               ) : null}
-              <span>·</span>
-              <span>{REVIEW_STATUS_LABELS[video.review_status]}</span>
+              <span className={styles.rowReview}>
+                {REVIEW_STATUS_LABELS[video.review_status]}
+              </span>
             </span>
           ) : null}
           {video.processing_status === 'failed' && video.latest_job?.error_message ? (

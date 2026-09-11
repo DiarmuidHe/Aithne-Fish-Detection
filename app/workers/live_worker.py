@@ -16,11 +16,13 @@ from sqlalchemy import select, update
 from app.config import get_settings
 from app.db.database import SessionLocal
 from app.db.models import LIVE_OPEN_STATUSES, LiveMonitorSession, utc_now
+from app.services.fish_enhancement import initialize_enhancement
 from app.services.live_monitor import LiveTracker, live_path, scratch_path
 from app.services.live_source import LiveSourceError, SegmentCapture, resolve_stream
 from app.services.live_species import SpeciesIdentifier
 from app.services.viame_parser import parse_viame_csv
 from app.services.viame_runner import build_viame_runner
+from app.services.video_media import check_live_video_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +257,8 @@ def run_worker_forever():
         raise SystemExit("Set LIVE_MONITOR_ENABLED=true to run the live worker")
     if settings.viame_mock:
         raise SystemExit("Live monitoring requires real VIAME (VIAME_MOCK=false); mock detections would misrepresent the camera")
+    check_live_video_runtime()
+    initialize_enhancement(settings)  # Fail locally before claiming sessions or reserving calls.
     shutdown = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: shutdown.set())

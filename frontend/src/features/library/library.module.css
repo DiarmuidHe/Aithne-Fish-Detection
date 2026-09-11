@@ -12,6 +12,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  background: var(--surface-raised);
   border-right: 1px solid var(--hairline);
 }
 
@@ -47,36 +48,55 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--hairline);
+  background: var(--surface-raised);
   flex: none;
 }
 
-.headerTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.headerTitle {
-  font-size: var(--text-lg);
-  line-height: var(--leading-lg);
-  font-weight: var(--weight-strong);
-}
-
+/*
+ * The filter toolbar. Controls are gathered into groups divided by rules —
+ * search | facets | date | run properties | sort — so the bar reads as one
+ * instrument with sections rather than as a dozen disconnected pills.
+ */
 .filterBar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  row-gap: var(--space-2);
 }
 
-.sortGroup {
+.filterGroup {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  border-left: 1px solid var(--hairline);
+}
+
+.filterGroup:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.filterGroup[data-grow] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.filterGroup[data-end] {
   margin-left: auto;
+  padding-right: 0;
+  gap: var(--space-1);
+}
+
+/* A row of controls inside one group. */
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .chipRow {
@@ -91,15 +111,57 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--hairline);
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
   color: var(--ink-muted);
 }
 
+.resultText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .resultCount {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-medium);
   color: var(--ink);
+}
+
+/* "updating" is a word with a pulse, not a spinner competing with the list. */
+.updating {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--accent);
+}
+
+.updating::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: updating-pulse 1200ms var(--ease-in-out) infinite;
+}
+
+@keyframes updating-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .updating::before {
+    animation: none;
+  }
 }
 
 .savedViews {
@@ -114,15 +176,58 @@
 .list {
   flex: 1;
   min-height: 0;
+  background: var(--surface-raised);
 }
 
+.list li {
+  animation: settle-in var(--motion) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list li {
+    animation: none;
+  }
+}
+
+/*
+ * A record row: a status rail on the left edge, a checkbox, two dense lines of
+ * metadata, and actions that appear on approach. The rail is what lets an
+ * operator scan processing state down the list without reading a word.
+ */
 .rowWrap {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--hairline);
+  background: var(--surface-raised);
   transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.rowWrap::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.rowWrap[data-status='completed']::before {
+  background: var(--status-completed);
+}
+
+.rowWrap[data-status='failed']::before {
+  background: var(--status-failed);
+}
+
+.rowWrap[data-status='processing']::before,
+.rowWrap[data-status='queued']::before {
+  background: var(--status-processing);
 }
 
 .rowWrap:hover {
@@ -133,9 +238,14 @@
   background: var(--accent-quiet);
 }
 
+/* The open record is marked by a full-height accent edge, not a wash. */
 .rowWrap[data-current] {
   background: var(--accent-quiet);
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.rowWrap[data-current]::before {
+  background: var(--accent);
+  width: 3px;
 }
 
 .rowCheck {
@@ -174,8 +284,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--text-xs);
-  line-height: var(--leading-xs);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
   color: var(--ink-muted);
   flex-wrap: wrap;
 }
@@ -188,8 +298,39 @@
   font-variant-numeric: tabular-nums;
 }
 
-.rowFlag {
+/* A dot instead of a typed interpunct, so the rhythm is even. */
+.rowDot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--hairline-strong);
+  flex: none;
+}
+
+/* Figure then unit: the number is monospaced, the unit is not. */
+.rowFigure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.rowFigureValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.rowFlag,
+.rowFlag .rowFigureValue {
   color: var(--status-flagged);
+}
+
+.rowReview {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--ink-faint);
 }
 
 .rowActions {
@@ -249,9 +390,16 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--hairline);
+  background: var(--surface-raised);
   font-size: var(--text-xs);
   color: var(--ink-muted);
   flex: none;
+}
+
+.pagerControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .pagerRange {
@@ -260,14 +408,6 @@
 }
 
 /* --- Skeleton ------------------------------------------------------------- */
-
-.skeletonRow {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--hairline);
-}
 
 @media (max-width: 1100px) {
   .layout {
@@ -291,7 +431,13 @@
     display: none;
   }
 
-  .sortGroup {
+  /* Narrow, the groups stack, so the rules become top rules instead. */
+  .filterGroup {
+    padding-inline: 0;
+    border-left: 0;
+  }
+
+  .filterGroup[data-end] {
     margin-left: 0;
   }
 }

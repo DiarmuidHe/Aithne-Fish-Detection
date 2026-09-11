@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LIVE_SOURCE_KEY_PATTERN = re.compile(r"^[a-z0-9-]{1,64}$")
 DEFAULT_CORAL_CITY_URL = "https://www.coralcitycamera.com/"
-PREPROCESS_MODES = ("none", "white_balance", "clahe", "both")
+PREPROCESS_MODES = ("none", "white_balance", "clahe", "both", "funie_gan")
 # Blend weights for species_quality.track_quality. Crop size and sharpness dominate
 # because they are what Fishial's classifier actually needs; detector confidence is
 # weakest because it measures "is this a fish", not "is this crop identifiable".
@@ -189,8 +189,12 @@ class Settings(BaseSettings):
     fishial_object_match_min_margin: float = Field(default=0.2, ge=0, le=1)
     # --- Regional plausibility ---
     fishial_region_filter_enabled: bool = True
-    # --- Underwater preprocessing, applied only to the staged identification crop ---
+    # --- Underwater preprocessing, only after a staged crop is selected ---
     fishial_preprocess: str = "none"
+    fishial_funie_model_path: str | None = Field(default=None, repr=False)
+    fishial_funie_model_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    fishial_funie_device: Literal["auto", "cpu", "cuda"] = "auto"
+    fishial_funie_jpeg_quality: int = Field(default=95, ge=1, le=100)
     fishial_clahe_clip: float = Field(default=2.0, gt=0)
     fishial_upscale_short_side: int = Field(default=0, ge=0)
     # Retains fish imagery on the output volume for offline replay. Off by default.
@@ -232,6 +236,11 @@ class Settings(BaseSettings):
                              "fishial_min_frames_to_vote")
         if self.fishial_preprocess not in PREPROCESS_MODES:
             raise ValueError(f"fishial_preprocess must be one of {', '.join(PREPROCESS_MODES)}")
+        if self.fishial_preprocess == "funie_gan" and (
+            not self.fishial_funie_model_path or not self.fishial_funie_model_path.strip()
+            or not self.fishial_funie_model_sha256
+        ):
+            raise ValueError("funie_gan requires a model path and SHA-256")
         weights = self.fishial_quality_weights
         if set(weights) != set(DEFAULT_QUALITY_WEIGHTS):
             raise ValueError(f"fishial_quality_weights must define exactly "

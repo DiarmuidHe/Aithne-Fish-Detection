@@ -47,6 +47,13 @@ export const router = createBrowserRouter([
           Component: (await import('@/features/live/live-route')).LiveRoute,
         }),
       },
+      {
+        path: 'settings',
+        errorElement: <RouteError />,
+        lazy: async () => ({
+          Component: (await import('@/features/system/system-route')).SystemRoute,
+        }),
+      },
       // The old dashboard URL still points at something useful.
       { path: 'dashboard', element: <Navigate to="/" replace /> },
       { path: '*', element: <Navigate to="/" replace /> },

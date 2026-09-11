@@ -91,7 +91,8 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(12 14 15 / 45%);
+  /* Tinted to the spine rather than neutral black, so dialogs sit in the app. */
+  background: rgb(10 26 31 / 48%);
   transition: opacity var(--motion) var(--ease-out);
   z-index: 40;
 }
@@ -146,8 +147,8 @@
 }
 
 .dialogTitle {
-  font-size: var(--text-lg);
-  line-height: var(--leading-lg);
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
   font-weight: var(--weight-strong);
 }
 
@@ -177,8 +178,8 @@
   max-width: 320px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
-  background: var(--ink);
-  color: var(--surface-raised);
+  background: var(--chrome-raised);
+  color: var(--chrome-ink);
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
   transform-origin: var(--transform-origin);

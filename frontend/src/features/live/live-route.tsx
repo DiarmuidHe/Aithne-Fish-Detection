@@ -14,10 +14,17 @@ import {
 } from '@/api/live';
 import { AnchorButton, Button } from '@/components/base/button';
 import { NumberInput, Segmented } from '@/components/base/controls';
-import { EmptyState, PanelError, Skeleton, StatusPill } from '@/components/base/feedback';
+import {
+  EmptyState,
+  LoadingBar,
+  PanelError,
+  Skeleton,
+  StatusPill,
+} from '@/components/base/feedback';
+import { MediaGrid, MediaTile } from '@/components/base/media-grid';
 import { SingleSelect } from '@/components/base/select';
 import { ColumnChart } from '@/components/charts/bar-chart';
-import { Page, Section } from '@/components/layout/shell';
+import { AppBarSlot, Band, Page } from '@/components/layout/shell';
 import { useToast } from '@/components/base/toast';
 import { PlayIcon, StopIcon } from '@/icons';
 import { useDocumentVisible } from '@/hooks/use-poll';
@@ -31,6 +38,16 @@ const SOURCE_KEY_STORAGE = 'live-source-key';
 const SPECIES_TARGET_STORAGE = 'live-species-fish-target';
 
 type GallerySort = 'recent' | 'duration' | 'confidence';
+
+/*
+ * Live monitoring is an observation station, not a page of cards.
+ *
+ * The camera toolbar, the footage, the counts and the lag line are one dark
+ * console slab running the full width of the workspace, divided internally by
+ * hairlines. It takes the marine spine's own ground, so the instrument reads as
+ * continuous with the rail rather than as a widget sitting on paper. Below it,
+ * on light ground, sits the record of what swam past.
+ */
 
 export function LiveRoute() {
   const toast = useToast();
@@ -152,7 +169,7 @@ export function LiveRoute() {
 
   if (sources.isError) {
     return (
-      <Page title="Live monitoring">
+      <Page>
         <PanelError
           message={sources.error instanceof Error ? sources.error.message : 'Request failed'}
           onRetry={() => void sources.refetch()}
@@ -161,13 +178,45 @@ export function LiveRoute() {
     );
   }
 
+  const activeLabel = sources.data?.sources.find((source) => source.key === effectiveKey)?.label;
+
   return (
-    <Page
-      title="Live monitoring"
-      subtitle="Analyzed camera frames, one camera at a time. Tracks are observations, not unique biological fish."
-    >
-      <Section title="Camera">
-        <div className={styles.controls}>
+    <Page width="full">
+      {/* Start and stop are the page's primary actions, so they live in the bar. */}
+      <AppBarSlot area="context">
+        <span>{activeLabel ?? 'No camera selected'}</span>
+        {session ? (
+          <StatusPill status={isRunning ? 'processing' : 'completed'}>{session.status}</StatusPill>
+        ) : null}
+      </AppBarSlot>
+      <AppBarSlot area="actions">
+        <Button
+          variant="primary"
+          size="small"
+          disabled={!enabled || !available || isRunning || start.isPending}
+          onClick={() => start.mutate()}
+        >
+          <PlayIcon />
+          Start monitoring
+        </Button>
+        <Button
+          size="small"
+          disabled={!isRunning || stop.isPending || (isStopping && !session?.worker_stale)}
+          onClick={() => stop.mutate()}
+        >
+          <StopIcon />
+          {isStopping ? 'Stopping…' : 'Stop'}
+        </Button>
+      </AppBarSlot>
+
+      {/*
+        * --- The console. Toolbar, footage, counts and lag on one dark slab.
+        * Every semantic token is remapped to the chrome family inside it, so
+        * the selects, number fields and the activity chart come along without
+        * a second set of styles.
+        */}
+      <div className={styles.console}>
+        <div className={styles.toolbar}>
           <SingleSelect
             label="Camera"
             value={effectiveKey ?? ''}
@@ -184,9 +233,10 @@ export function LiveRoute() {
           />
 
           {fishial?.enabled ? (
-            <div className={styles.speciesControls}>
+            <>
+              <span className={styles.toolbarRule} aria-hidden="true" />
               <NumberInput
-                label="Identify species for the first N fish"
+                label="Identify species for the first"
                 min={0}
                 max={fishial.max_fish_per_session}
                 value={speciesTarget}
@@ -204,137 +254,184 @@ export function LiveRoute() {
                 disabled={isRunning}
                 onChange={setFramesPerFish}
               />
-              <p className="note" style={{ maxWidth: '34ch' }}>
-                0 = off. Sends fish crops to Fishial AI; each frame uses an API call.
+              <p className={styles.toolbarNote}>
+                0 = off. Sends fish crops to the Fishial identification service; each frame
+                uses one API call.
               </p>
-            </div>
-          ) : null}
-
-          <Button
-            variant="primary"
-            disabled={!enabled || !available || isRunning || start.isPending}
-            onClick={() => start.mutate()}
-          >
-            <PlayIcon />
-            Start monitoring
-          </Button>
-          <Button
-            // A stop request is already in flight, so a second one is a no-op —
-            // unless the worker has gone quiet, in which case retrying is the
-            // only thing left to try.
-            disabled={!isRunning || stop.isPending || (isStopping && !session?.worker_stale)}
-            onClick={() => stop.mutate()}
-          >
-            <StopIcon />
-            {isStopping ? 'Stopping…' : 'Stop'}
-          </Button>
-
-          {isRunning ? (
-            <>
-              <p className={styles.guard}>Stop monitoring to switch to another camera.</p>
-              {fishial?.enabled ? (
-                <p className={styles.guard}>Stop monitoring to change species identification.</p>
-              ) : null}
             </>
           ) : null}
+
+          <p className={styles.toolbarGuard}>
+            {isRunning && fishial?.enabled
+              ? 'Stop monitoring to change the camera or species identification.'
+              : isRunning
+                ? 'Stop monitoring to switch to another camera.'
+                : 'One camera at a time.'}
+          </p>
         </div>
 
-        <p className={styles.statusLine} role="status" aria-live="polite">
+        <div className={styles.body}>
+          <div className={styles.stage}>
+            {session?.annotated_stream_url ? (
+              <img
+                className={styles.player}
+                alt="Live camera with boxes and labels for detected fish"
+                // A fresh immutable snapshot each poll avoids stuck MJPEG sockets
+                // after the worker reconnects.
+                src={liveSnapshotUrl(session.annotated_stream_url, session.last_frame_at)}
+              />
+            ) : (
+              <div className={styles.placeholder}>
+                <p>
+                  {isRunning
+                    ? 'Waiting for an annotated frame…'
+                    : !enabled
+                      ? 'Live monitoring is disabled for this deployment.'
+                      : !available
+                        ? 'Live monitoring needs the VIAME worker in GPU mode.'
+                        : 'Start monitoring to view analyzed camera frames.'}
+                </p>
+                {isRunning ? (
+                  <span className={styles.placeholderBar}>
+                    <LoadingBar label="Waiting for an annotated frame" />
+                  </span>
+                ) : null}
+              </div>
+            )}
+
+            {/* The camera label sits on the footage, the way an overlay does. */}
+            {activeLabel ? (
+              <span className={styles.stageLabel}>
+                {activeLabel}
+                {isRunning ? (
+                  <>
+                    <span className={styles.liveDot} aria-hidden="true" />
+                    <span className={styles.liveWord}>Live</span>
+                  </>
+                ) : null}
+              </span>
+            ) : null}
+          </div>
+
+          {/*
+            * The counts belong to the footage beside them, so they share its
+            * slab and are separated from it by a rule rather than by a gap.
+            */}
+          <aside className={styles.side} aria-label="Session activity">
+            {activity.data ? (
+              <>
+                <dl className={styles.stats}>
+                  <div
+                    className={styles.stat}
+                    data-live={activity.data.active_tracks > 0 || undefined}
+                  >
+                    <dt className={styles.statLabel}>Active tracks</dt>
+                    <dd className={styles.statValue}>{formatCount(activity.data.active_tracks)}</dd>
+                  </div>
+                  <div className={styles.stat}>
+                    <dt className={styles.statLabel}>
+                      In window
+                      <span className={styles.statNote}>
+                        {formatCount(activity.data.window_detections)} detections
+                      </span>
+                    </dt>
+                    <dd className={styles.statValue}>{formatCount(activity.data.window_tracks)}</dd>
+                  </div>
+                  <div className={styles.stat}>
+                    <dt className={styles.statLabel}>Finalised</dt>
+                    <dd className={styles.statValue}>
+                      {formatCount(activity.data.finalized_tracks)}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className={styles.activity}>
+                  <p className={styles.activityHead}>
+                    <span className="label">Activity</span>
+                    <span className={styles.activityRange}>
+                      Last {activity.data.window_seconds}s analyzed
+                    </span>
+                  </p>
+                  <ColumnChart
+                    title=""
+                    valueLabel="distinct tracks"
+                    columns={activity.data.series.map((point) => ({
+                      label: formatClock(point.at),
+                      value: point.tracks,
+                    }))}
+                  />
+                </div>
+              </>
+            ) : session ? (
+              <div className={styles.sidePad}>
+                <Skeleton height={180} radius={6} />
+              </div>
+            ) : (
+              <div className={styles.sideIdle}>
+                <p className="label">Not monitoring</p>
+                <p className={styles.sideIdleBody}>
+                  Counts and the activity trace appear here once a session is open.
+                </p>
+              </div>
+            )}
+          </aside>
+        </div>
+
+        {/* The lag line: the bottom rail of the instrument. */}
+        <p
+          className={styles.statusLine}
+          role="status"
+          aria-live="polite"
+          data-running={isRunning || undefined}
+        >
           {!enabled ? (
             'Live monitoring is disabled. Enable LIVE_MONITOR_ENABLED on the API and live worker.'
           ) : !available ? (
             'Live monitoring needs the VIAME worker in GPU mode. This deployment uses mock detections.'
           ) : !session ? (
-            `Ready to monitor ${sources.data?.sources.find((source) => source.key === effectiveKey)?.label ?? 'the camera'}.`
+            `Ready to monitor ${activeLabel ?? 'the camera'}.`
           ) : (
             <>
-              <StatusPill status={isRunning ? 'processing' : 'completed'}>
-                {session.status}
-              </StatusPill>
               <span className={styles.lag}>
                 {session.lag_seconds === null
                   ? 'Waiting for frames'
                   : `${session.lag_seconds.toFixed(1)}s since the latest analyzed frame`}
               </span>
-              <span>·</span>
+              <span className={styles.lagDot} aria-hidden="true" />
               <span className={styles.lag}>{session.reconnect_count} reconnects</span>
-              <span>·</span>
+              <span className={styles.lagDot} aria-hidden="true" />
               <span className={styles.lag}>{session.dropped_segments} skipped segments</span>
-              {session.status === 'queued' ? <span>· Waiting for the live worker</span> : null}
+              {session.status === 'queued' ? (
+                <span className={styles.lagNote}>Waiting for the live worker</span>
+              ) : null}
               {isStopping ? (
-                <span>· Finishing the segment it is already analyzing, then stopping</span>
+                <span className={styles.lagNote}>
+                  Finishing the segment it is already analyzing, then stopping
+                </span>
               ) : null}
             </>
           )}
         </p>
-
-        {session?.worker_stale ? (
-          <PanelError
-            title="The live worker heartbeat is overdue"
-            message="Check the live worker service."
-          />
-        ) : session?.error_message ? (
-          <PanelError title="The session reported an error" message={session.error_message} />
-        ) : null}
-      </Section>
-
-      <div className={styles.monitor}>
-        <div className={styles.stage}>
-          {session?.annotated_stream_url ? (
-            <img
-              className={styles.player}
-              alt="Live camera with boxes and labels for detected fish"
-              // A fresh immutable snapshot each poll avoids stuck MJPEG sockets
-              // after the worker reconnects.
-              src={liveSnapshotUrl(session.annotated_stream_url, session.last_frame_at)}
-            />
-          ) : (
-            <p className={styles.placeholder}>
-              {isRunning
-                ? 'Waiting for an annotated frame…'
-                : 'Start monitoring to view analyzed camera frames.'}
-            </p>
-          )}
-          <p className="note">
-            The annotated view updates after each analyzed segment. Processing lag is shown above.
-          </p>
-        </div>
-
-        <div className={styles.side}>
-          {activity.data ? (
-            <>
-              <dl className={styles.metrics}>
-                <Metric value={activity.data.active_tracks} label="Active tracks" />
-                <Metric value={activity.data.window_tracks} label="Tracks in window" />
-                <Metric value={activity.data.window_detections} label="Detections in window" />
-                <Metric value={activity.data.finalized_tracks} label="Finalized" />
-              </dl>
-              <ColumnChart
-                title="Recent fish activity"
-                note={`Last ${activity.data.window_seconds}s of analyzed footage`}
-                valueLabel="distinct tracks"
-                columns={activity.data.series.map((point) => ({
-                  label: formatClock(point.at),
-                  value: point.tracks,
-                }))}
-              />
-            </>
-          ) : session ? (
-            <Skeleton height={180} />
-          ) : null}
-        </div>
       </div>
 
-      {session ? (
-        <Section
-          title="Finalized fish histories"
-          action={<span className="note">{formatCount(galleryTracks.length)} shown</span>}
-        >
-          <p className="note">
-            Fish histories finish after about {session.lost_track_seconds} seconds without a
-            detection, or when monitoring stops. Showing the latest 50 histories.
-          </p>
+      {session?.worker_stale ? (
+        <PanelError
+          title="The live worker heartbeat is overdue"
+          message="Check the live worker service."
+        />
+      ) : session?.error_message ? (
+        <PanelError title="The session reported an error" message={session.error_message} />
+      ) : null}
 
+      {session ? (
+        <Band
+          tone="sunken"
+          label="Finalised fish histories"
+          note={`A history finishes after about ${session.lost_track_seconds}s without a detection, or when monitoring stops. Latest 50 shown.`}
+          action={
+            <span className={styles.shownCount}>{formatCount(galleryTracks.length)} shown</span>
+          }
+        >
           <div className={styles.galleryFilters}>
             <SingleSelect
               label="Species"
@@ -348,12 +445,12 @@ export function LiveRoute() {
               multiple
               onChange={setIdentifiedOnly}
               options={[
-                { value: 'identified', label: 'Named by Fishial' },
+                { value: 'identified', label: 'Named' },
                 { value: 'unnamed', label: 'Not named' },
               ]}
             />
             <Segmented
-              label="Sort finalized histories"
+              label="Sort finalised histories"
               value={[gallerySort]}
               onChange={(value) => setGallerySort((value[0] as GallerySort) ?? 'recent')}
               options={[
@@ -366,37 +463,37 @@ export function LiveRoute() {
 
           {galleryTracks.length === 0 ? (
             <EmptyState
-              title="No finalized histories match"
+              title="No finalised histories match"
               body={
                 (clips.data?.length ?? 0) > 0
                   ? 'Clear the species or identification filter to see the other histories.'
-                  : 'Finalized fish clips and crops appear here once a fish leaves the frame.'
+                  : 'Finalised fish clips and crops appear here once a fish leaves the frame.'
               }
             />
           ) : (
-            <div className={styles.gallery}>
+            <MediaGrid size="large">
               {galleryTracks.map((track) => (
-                <LiveCard key={track.id} track={track} />
+                <LiveTile key={track.id} track={track} />
               ))}
-            </div>
+            </MediaGrid>
           )}
-        </Section>
+        </Band>
       ) : null}
 
       {session?.species_id.enabled && species.data ? (
-        <Section title="Session species breakdown · Fishial AI">
-          <div className={styles.speciesList}>
+        <Band label="Species identification" note="Names supplied by the Fishial service">
+          <dl className={styles.speciesList}>
             {species.data.species.map((entry) => (
               <div className={styles.speciesRow} key={entry.species}>
-                <span>{entry.species}</span>
-                <span className={styles.speciesCount}>{plural(entry.count, 'fish')}</span>
-                <span className={styles.speciesCount}>
+                <dt className={styles.speciesName}>{entry.species}</dt>
+                <dd className={styles.speciesCount}>{plural(entry.count, 'fish')}</dd>
+                <dd className={styles.speciesCount}>
                   {formatPercent(entry.mean_confidence, 0)} mean
-                </span>
+                </dd>
               </div>
             ))}
-          </div>
-          <p className="note">
+          </dl>
+          <p className={`note ${styles.speciesNote}`}>
             {session.species_id.fish_enrolled}/{session.species_id.fish_target} enrolled ·{' '}
             {species.data.review_required} need review ·{' '}
             {species.data.declined > 0 ? `${species.data.declined} not named by the model · ` : ''}
@@ -405,65 +502,64 @@ export function LiveRoute() {
               .map(([reason, count]) => ` · ${count} ${reason}`)
               .join('')}
           </p>
-        </Section>
+        </Band>
       ) : null}
     </Page>
   );
 }
 
-function Metric({ value, label }: { value: number; label: string }) {
-  return (
-    <div className={styles.metric}>
-      <dd className={styles.metricValue}>{formatCount(value)}</dd>
-      <dt className={styles.metricLabel}>{label}</dt>
-    </div>
-  );
-}
-
-function LiveCard({ track }: { track: LiveTrack }) {
+/**
+ * One finalised fish history. The clip is the record; the identifier, the
+ * species and the figures are the label written under it.
+ */
+function LiveTile({ track }: { track: LiveTrack }) {
   const name =
     track.fishial_state === 'identified' ? track.fishial_species : (track.species ?? 'Fish');
+  const state = track.fishial_state;
+  const flagTone =
+    state === 'identified' ? 'named' : state === 'review_required' || state === 'error'
+      ? 'flagged'
+      : 'neutral';
+
   return (
-    <figure className={styles.card}>
-      {track.clip_url ? (
-        <video
-          src={track.clip_url}
-          poster={track.crop_url ?? undefined}
-          controls
-          loop
-          muted
-          playsInline
-          preload="none"
-        />
-      ) : track.crop_url ? (
-        <img src={track.crop_url} alt={`Annotated crop of ${name}`} loading="lazy" />
-      ) : null}
-      <figcaption>
-        <p className={styles.cardTitle}>
-          {name} · <span className="mono">{track.id.slice(0, 8)}</span>
-        </p>
-        <p className={styles.cardBadge} data-state={track.fishial_state}>
-          {badgeFor(track)}
-        </p>
-        <p className={styles.cardMeta}>
-          {track.detection_count} detections · {formatPercent(track.max_confidence, 0)} ·{' '}
-          {track.finalization_reason} · {formatClock(track.last_seen_at)}
-        </p>
-        {track.crop_url ? (
-          <AnchorButton variant="link" size="small" href={track.crop_url}>
-            Open annotated crop
+    <MediaTile
+      flagTone={flagTone}
+      media={
+        track.clip_url ? (
+          <video
+            src={track.clip_url}
+            poster={track.crop_url ?? undefined}
+            controls
+            loop
+            muted
+            playsInline
+            preload="none"
+            aria-label={`Clip following ${name}`}
+          />
+        ) : track.crop_url ? (
+          <img src={track.crop_url} alt={`Annotated crop of ${name}`} loading="lazy" />
+        ) : null
+      }
+      title={name ?? 'Fish'}
+      subtitle={track.id.slice(0, 8)}
+      flag={badgeFor(track) || undefined}
+      meta={`${track.detection_count} detections · ${formatPercent(track.max_confidence, 0)} · ${formatClock(track.last_seen_at)}`}
+      footnote={track.media_error ?? undefined}
+      actions={
+        track.crop_url ? (
+          <AnchorButton variant="quiet" size="small" href={track.crop_url}>
+            Crop
           </AnchorButton>
-        ) : null}
-        {track.media_error ? <p className="note">{track.media_error}</p> : null}
-      </figcaption>
-    </figure>
+        ) : null
+      }
+    />
   );
 }
 
 function badgeFor(track: LiveTrack): string {
   const state = track.fishial_state;
   if (state === 'identified') {
-    return `${formatPercent(track.fishial_species_confidence ?? 0, 0)} · Fishial AI`;
+    return `Named · ${formatPercent(track.fishial_species_confidence ?? 0, 0)}`;
   }
   if (state === 'review_required' || state === 'error') {
     const diagnostics = track.fishial_diagnostics ?? {};
@@ -474,10 +570,10 @@ function badgeFor(track: LiveTrack): string {
         ? `${candidate.common_name} (${candidate.species})`
         : candidate.species;
       const rejected = candidate.rejected_for_region ? '; rejected for region' : '';
-      return `${label} (${formatPercent(candidate.max_score, 0)} best Fishial score${rejected})`;
+      return `${label} (${formatPercent(candidate.max_score, 0)} best score${rejected})`;
     });
     return candidates.length
-      ? `Review required · Tentative species: ${candidates.join('; ')} · ${reason}${scope}`
+      ? `Review required · Tentative: ${candidates.join('; ')} · ${reason}${scope}`
       : `Review required: ${reason}${scope}`;
   }
   if (state === 'candidate') return 'Staged for identification';

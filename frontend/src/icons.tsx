@@ -218,6 +218,28 @@ export const MoonIcon = (props: IconProps) => (
   </Icon>
 );
 
+export const ServerIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="2" y="3" width="12" height="4.5" rx="1" />
+    <rect x="2" y="8.5" width="12" height="4.5" rx="1" />
+    <path d="M4.5 5.25h.01M4.5 10.75h.01" />
+  </Icon>
+);
+
+export const CollapseIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="2" y="3" width="12" height="10" rx="1" />
+    <path d="M6.5 3v10" />
+  </Icon>
+);
+
+export const CameraIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M1.5 5.5h8v5.5h-8z" />
+    <path d="M9.5 8.25 14 5.75v4.5L9.5 7.75Z" />
+  </Icon>
+);
+
 export const KeyboardIcon = (props: IconProps) => (
   <Icon {...props}>
     <rect x="1.5" y="4" width="13" height="8" rx="1" />
@@ -240,7 +262,9 @@ export function FishMark(props: React.SVGProps<SVGSVGElement>) {
       {...props}
     >
       <path d="M10 33c10-15 27-18 40-5l8-8v26l-8-8C36 51 20 48 10 33Z" />
-      <circle cx="43" cy="30" r="2.5" fill="var(--surface)" />
+      {/* The eye is a hole punched in the mark, so it takes whatever is behind
+          it — the dark rail or a light page — rather than a fixed colour. */}
+      <circle cx="43" cy="30" r="2.5" fill="var(--mark-eye, var(--surface))" />
     </svg>
   );
 }

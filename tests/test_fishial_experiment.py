@@ -97,6 +97,58 @@ def test_nonpositive_replay_budget_rejected_before_capture(ceiling, tmp_path):
     assert exc.value.code == 2
 
 
+@pytest.mark.parametrize("modes", ["none,none", "none,unknown", "", "none,", "funie_gan,none"])
+def test_explicit_modes_reject_duplicates_and_unknown(modes):
+    with pytest.raises(SystemExit):
+        fishial_replay.parse_modes(modes)
+
+
+def test_pairs_hold_back_retry_budget_and_freeze_model_provenance(test_settings, tmp_path, monkeypatch):
+    from app.services.fish_enhancement import PROVENANCE, EnhancedCrop, enhance_crop
+    directory = tmp_path / "pairs"
+    crops(directory)
+    manifest = json.loads((directory / "manifest.json").read_text())
+    manifest["crops"][0]["ground_truth_scientific_name"] = "Pollachius virens"
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    test_settings.fishial_client_id = "id"
+    test_settings.fishial_client_secret = SecretStr("secret")
+    test_settings.fishial_funie_model_path = "fake.pth"
+    test_settings.fishial_funie_model_sha256 = "0" * 64
+    monkeypatch.setattr(fishial_replay, "get_settings", lambda: test_settings)
+    monkeypatch.setattr(fishial_replay, "initialize_enhancement", lambda *args: None)
+    selected, requests = [], []
+    def fake(image, settings):
+        selected.append(settings.fishial_preprocess)
+        if settings.fishial_preprocess == "none":
+            return enhance_crop(image, settings)
+        result = enhance_crop(image, settings.model_copy(update={"fishial_preprocess": "both"}))
+        return EnhancedCrop(result.image, {**result.metadata, "mode": "funie_gan",
+            "model_id": PROVENANCE["model_id"], "model_sha256": "0" * 64})
+    monkeypatch.setattr(fishial_replay, "enhance_crop", fake)
+    def handle(request):
+        if request.url.path.endswith("auth"):
+            return httpx.Response(200, json={"access_token": "token"})
+        requests.append(request.content)
+        return httpx.Response(500) if len(requests) == 1 else httpx.Response(200, json={
+            "ok": True, "objects": [{"species": [{"id": "fish", "certainty": .8}]}],
+            "definitions": {"fish": {"scientificName": "Pollachius virens"}}})
+    with httpx.Client(transport=httpx.MockTransport(handle)) as http:
+        monkeypatch.setattr(fishial_replay, "FishialClient", lambda settings: FishialClient(settings, http))
+        args = ["--replay", str(directory), "--preprocess-modes", "none,funie_gan", "--max-calls", "2"]
+        assert fishial_replay.main(args) == 0
+        assert fishial_replay.main(args) == 0
+        assert selected == ["none", "funie_gan"] and len(requests) == 2
+        report = json.loads((directory / "report.json").read_text())
+        assert report["labelled_by_mode"] == {"none": {"abstained": 1}, "funie_gan": {"correct": 1}}
+        result = report["results"]["funie_gan/crop-1.jpg"]
+        assert result["preprocessing"]["model_sha256"] == "0" * 64
+        assert (directory / "variants/funie_gan/crop-1.jpg").read_bytes() == requests[1]
+        test_settings.fishial_funie_model_sha256 = "1" * 64
+        with pytest.raises(SystemExit, match="changed"):
+            fishial_replay.main(args)
+        assert len(requests) == 2
+
+
 def test_capture_reuses_ranking_and_retains_clean_targets_without_fishial(
         test_settings, tmp_path, monkeypatch):
     monkeypatch.setattr(FishialClient, "__init__", lambda *a, **k: pytest.fail("Capture constructed a paid client"))

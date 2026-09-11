@@ -400,7 +400,7 @@ class LiveTracker:
         # match the wrong object.
         expected = [(x1 - left) / (right - left), (y1 - top) / (bottom - top),
                     (x2 - left) / (right - left), (y2 - top) / (bottom - top)]
-        ok, encoded = self.cv2.imencode(".jpg", self._preprocess_crop(crop),
+        ok, encoded = self.cv2.imencode(".jpg", crop,
                                         [self.cv2.IMWRITE_JPEG_QUALITY, 95])
         if not ok:
             raise OSError("Species crop encoding failed")

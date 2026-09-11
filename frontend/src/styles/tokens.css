@@ -1,89 +1,147 @@
 /*
  * Fish Monitor design tokens.
  *
- * The screen is an instrument console, not a landing page: ink on paper, one
- * accent for interaction, a separate reserved set for status, hairlines instead
- * of shadows, and shadow reserved for things that genuinely float.
+ * The product is an operations console for people watching water, not a web
+ * app with a dashboard bolted on. Three decisions carry the identity:
  *
- * Rules encoded here, so they cannot drift:
- *  - one accent (the existing teal), used only for interactive affordance and
- *    selection; never for decoration and never as a gradient;
- *  - status colours are a closed set, used only to carry status, and always
- *    paired with a word so colour is never the only signal;
- *  - radii: 4px controls, 8px popups, 0 for page regions and tables;
- *  - elevation belongs to portals only.
+ *  1. A dark marine spine. The navigation rail and the application bar are a
+ *     deep blue-green graphite that never changes with the theme. Content sits
+ *     beside it on cool paper. This is what separates an operations console
+ *     from a light-grey SaaS template, and it is why the chrome has its own
+ *     token family rather than borrowing the surface ramp.
+ *  2. Tinted neutrals. Every grey carries a little cyan (hue ~197). Pure
+ *     neutral greys read as unfinished; tinted ones read as instrumentation.
+ *  3. One accent, one closed status set. Teal is interaction and selection
+ *     only — never decoration, never a gradient. Status colours may only carry
+ *     status, and are always paired with a word.
+ *
+ * Geometry: 6px panels, 5px controls, 8px popups, square table regions.
+ * Elevation belongs to portals and to the chrome edge; nothing else floats.
  */
 
 :root {
   color-scheme: light;
 
-  /* Surfaces: one paper, one card, one sunken well. */
-  --surface: #fbfaf8;
+  /* --- Content surfaces: cool paper, white panels, one sunken well. ------- */
+  --surface: #edf1f2;
   --surface-raised: #ffffff;
-  --surface-sunken: #f2f0ec;
-  --surface-hover: #f4f2ee;
-  --surface-active: #ebe8e2;
+  --surface-sunken: #f5f8f8;
+  --surface-hover: #f0f4f5;
+  --surface-active: #e3e9eb;
+  /*
+   * Section grounds. A page is not one ground with cards on it: bands of
+   * slightly different material carry the section rhythm, so a run of panels
+   * never has to do that work by multiplying borders.
+   */
+  --band: #e3eaec;
+  --band-strong: #d8e1e3;
 
-  /* Ink. One near-black, two steps down for support text. */
-  --ink: #16191a;
-  --ink-muted: #565c5e;
-  /* Darkened to clear 4.5:1 against --surface-sunken at 12px. */
-  --ink-faint: #63696b;
+  /* --- Ink. One near-black, two steps down for support text. -------------- */
+  --ink: #0e1a1f;
+  --ink-muted: #51646c;
+  /* Holds 4.5:1 against --surface-sunken at 12px. */
+  --ink-faint: #687a82;
   --ink-inverse: #ffffff;
 
-  /* Hairlines do the separating work that shadows used to. */
-  --hairline: #dedbd5;
-  --hairline-strong: #c3bfb7;
+  /* --- Hairlines do the separating work that shadows used to. ------------- */
+  --hairline: #d8dfe2;
+  --hairline-strong: #bcc7cb;
 
-  /* The one accent. Kept from the previous design's --sea, minus the gradient. */
-  --accent: #0b5960;
-  --accent-hover: #094a50;
-  --accent-active: #073c41;
-  --accent-quiet: #e2eded;
-  --accent-quiet-hover: #d3e4e4;
+  /* --- The one accent. ---------------------------------------------------- */
+  --accent: #0c6e78;
+  --accent-hover: #0a5b64;
+  --accent-active: #084a52;
+  --accent-quiet: #e2eff0;
+  --accent-quiet-hover: #d1e5e8;
   --accent-ink: #ffffff;
-  --focus-ring: #0b5960;
+  --focus-ring: #0c6e78;
 
-  /* Reserved status set. Nothing else may use these. */
-  --status-uploaded: #5f6668;
-  --status-uploaded-bg: #eeece8;
-  --status-queued: #7a5c12;
-  --status-queued-bg: #f6efdc;
-  --status-processing: #17566f;
-  --status-processing-bg: #e0edf3;
-  --status-completed: #2a6340;
-  --status-completed-bg: #e2eee6;
-  --status-failed: #96271f;
-  --status-failed-bg: #f6e3e1;
-  --status-flagged: #8a4212;
-  --status-flagged-bg: #f7e8dc;
+  /*
+   * --- The marine spine. ---------------------------------------------------
+   * Fixed in both themes: the rail and app bar are the constant the operator
+   * navigates by. Only the content beside them changes with the theme.
+   */
+  --chrome: #0f2027;
+  --chrome-raised: #162b34;
+  --chrome-hover: #1c353f;
+  --chrome-active: #22404b;
+  --chrome-ink: #e8eef0;
+  --chrome-ink-muted: #90a6ae;
+  --chrome-ink-faint: #6d858f;
+  --chrome-hairline: #22383f;
+  --chrome-hairline-strong: #2d4751;
+  /* Teal has to lift off the dark spine, so it runs brighter there. */
+  --chrome-accent: #4bb8c4;
+  --chrome-accent-quiet: #16323a;
 
-  /* Type: a text face and a monospace face, both self-hosted by the OS. */
+  /* --- Reserved status set. Nothing else may use these. ------------------- */
+  --status-uploaded: #56686f;
+  --status-uploaded-bg: #e8edef;
+  --status-queued: #7f5410;
+  --status-queued-bg: #f8efd9;
+  --status-processing: #12566d;
+  --status-processing-bg: #deedf4;
+  --status-completed: #1d6743;
+  --status-completed-bg: #dfefe6;
+  --status-failed: #97281f;
+  --status-failed-bg: #f9e4e2;
+  --status-flagged: #8b4711;
+  --status-flagged-bg: #faead9;
+
+  /*
+   * --- Sand and stone. -----------------------------------------------------
+   * The only warm tones in the system, and they are used sparingly: the last
+   * step of a chart sequence, and the rule under a media band. They exist so
+   * the palette reads as an estuary rather than as one teal.
+   */
+  --sand: #c3ad83;
+  --sand-soft: #ece4d3;
+  --stone: #a8a89c;
+
+  /* --- Data visualisation. Accent first, neutrals after; no rainbow. ------ */
+  --chart-1: #0c6e78;
+  --chart-2: #4a7f6c;
+  --chart-3: #6fadb2;
+  --chart-4: #9cc7ca;
+  --chart-5: #c3ad83;
+  --chart-grid: #e3e9eb;
+  --chart-track: #e8edef;
+
+  /* --- Type: a text face and a monospace face, both from the OS. --------- */
   --font-text:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    'Inter var', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
   --font-mono:
     ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', Menlo,
     Consolas, monospace;
 
-  /* Six steps, each with its own line height rather than 1.5 throughout. */
+  /* Steps sized for a console: nothing marketing-sized, each with its own leading. */
+  --text-2xs: 11px;
+  --leading-2xs: 14px;
   --text-xs: 12px;
   --leading-xs: 16px;
   --text-sm: 13px;
   --leading-sm: 18px;
-  --text-base: 15px;
-  --leading-base: 22px;
-  --text-lg: 18px;
+  --text-base: 14px;
+  --leading-base: 20px;
+  --text-md: 15px;
+  --leading-md: 22px;
+  --text-lg: 17px;
   --leading-lg: 24px;
-  --text-xl: 24px;
-  --leading-xl: 30px;
-  --text-2xl: 32px;
-  --leading-2xl: 38px;
+  --text-xl: 20px;
+  --leading-xl: 27px;
+  /* KPI figures only. The prompt's ceiling is 30px and we sit under it. */
+  --text-2xl: 26px;
+  --leading-2xl: 32px;
 
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-strong: 600;
 
-  /* An 8px scale used with rhythm: related at 8, groups at 24, sections at 48. */
+  /* Small caps labels above figures and section eyebrows. */
+  --tracking-label: 0.06em;
+
+  /* An 8px scale used with rhythm: related at 8, groups at 24, sections at 40. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -94,111 +152,151 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  --radius-control: 4px;
+  --radius-control: 5px;
+  --radius-panel: 6px;
   --radius-popup: 8px;
   --radius-region: 0;
 
-  --row-height: 34px;
+  --row-height: 36px;
+  --row-height-media: 44px;
   --control-height: 32px;
-  --rail-width: 256px;
-  --content-max: 1600px;
+  --control-height-sm: 26px;
+  --rail-width: 232px;
+  --rail-width-collapsed: 56px;
+  --appbar-height: 56px;
+  --content-max: 1760px;
 
-  --motion-fast: 120ms;
+  --motion-fast: 110ms;
   --motion: 160ms;
+  --motion-slow: 260ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* The only elevation in the system. Portals only. */
-  --shadow-popup: 0 6px 16px rgb(22 25 26 / 12%), 0 1px 3px rgb(22 25 26 / 10%);
+  /* Elevation: portals, and the one edge where the spine meets the content. */
+  --shadow-popup: 0 8px 24px rgb(10 26 31 / 14%), 0 1px 3px rgb(10 26 31 / 10%);
+  --shadow-panel: 0 1px 2px rgb(10 26 31 / 4%);
+  --shadow-spine: 1px 0 0 rgb(10 26 31 / 8%);
 }
 
+/* --- Dark content. Graphite tinted to sit under the same marine spine. ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-
     color-scheme: dark;
 
-    --surface: #141718;
-    --surface-raised: #1b1f20;
-    --surface-sunken: #0e1011;
-    --surface-hover: #212527;
-    --surface-active: #2a2f31;
+    --surface: #131a1e;
+    --surface-raised: #1a2328;
+    --surface-sunken: #0e1417;
+    --surface-hover: #212b31;
+    --surface-active: #29353b;
+    --band: #0f1518;
+    --band-strong: #0c1215;
 
-    --ink: #e9e7e3;
-    --ink-muted: #a2a8aa;
-    --ink-faint: #868d8f;
-    --ink-inverse: #0e1011;
+    --ink: #e6ecee;
+    --ink-muted: #9fb0b6;
+    --ink-faint: #84979e;
+    --ink-inverse: #0e1417;
 
-    --hairline: #2b2f31;
-    --hairline-strong: #3f4548;
+    --hairline: #26333a;
+    --hairline-strong: #3a4a52;
 
-    --accent: #6bc0c7;
-    --accent-hover: #83cdd3;
-    --accent-active: #9adade;
-    --accent-quiet: #17292b;
-    --accent-quiet-hover: #1e3639;
-    --accent-ink: #0b1516;
-    --focus-ring: #6bc0c7;
+    --accent: #4bb8c4;
+    --accent-hover: #67c7d1;
+    --accent-active: #85d5dd;
+    --accent-quiet: #142e34;
+    --accent-quiet-hover: #1b3b43;
+    --accent-ink: #06171a;
+    --focus-ring: #4bb8c4;
 
-    --status-uploaded: #a0a7a9;
-    --status-uploaded-bg: #232729;
-    --status-queued: #d8b658;
-    --status-queued-bg: #2d2718;
-    --status-processing: #6fb4d4;
-    --status-processing-bg: #182930;
-    --status-completed: #74c091;
-    --status-completed-bg: #182a20;
-    --status-failed: #e08a83;
-    --status-failed-bg: #2e1c1a;
-    --status-flagged: #dd9c62;
-    --status-flagged-bg: #2e2118;
+    --status-uploaded: #9fafb5;
+    --status-uploaded-bg: #222c31;
+    --status-queued: #d6b45b;
+    --status-queued-bg: #2b2517;
+    --status-processing: #6bb2d2;
+    --status-processing-bg: #16272f;
+    --status-completed: #6cbe8b;
+    --status-completed-bg: #16281e;
+    --status-failed: #de8981;
+    --status-failed-bg: #2c1a18;
+    --status-flagged: #db9a60;
+    --status-flagged-bg: #2c2017;
 
-    --shadow-popup: 0 6px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 40%);
+    --sand: #a8946b;
+    --sand-soft: #2a2418;
+    --stone: #7d8180;
+    --chart-1: #4bb8c4;
+    --chart-2: #6f9e86;
+    --chart-3: #2c6d76;
+    --chart-4: #1f4e55;
+    --chart-5: #9c8a63;
+    --chart-grid: #26333a;
+    --chart-track: #222c31;
+
+    --shadow-popup: 0 8px 24px rgb(0 0 0 / 48%), 0 1px 3px rgb(0 0 0 / 40%);
+    --shadow-panel: 0 1px 2px rgb(0 0 0 / 20%);
+    --shadow-spine: 1px 0 0 rgb(0 0 0 / 30%);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --surface: #141718;
-  --surface-raised: #1b1f20;
-  --surface-sunken: #0e1011;
-  --surface-hover: #212527;
-  --surface-active: #2a2f31;
+  --surface: #131a1e;
+  --surface-raised: #1a2328;
+  --surface-sunken: #0e1417;
+  --surface-hover: #212b31;
+  --surface-active: #29353b;
+  --band: #0f1518;
+  --band-strong: #0c1215;
 
-  --ink: #e9e7e3;
-  --ink-muted: #a2a8aa;
-  --ink-faint: #868d8f;
-  --ink-inverse: #0e1011;
+  --ink: #e6ecee;
+  --ink-muted: #9fb0b6;
+  --ink-faint: #84979e;
+  --ink-inverse: #0e1417;
 
-  --hairline: #2b2f31;
-  --hairline-strong: #3f4548;
+  --hairline: #26333a;
+  --hairline-strong: #3a4a52;
 
-  --accent: #6bc0c7;
-  --accent-hover: #83cdd3;
-  --accent-active: #9adade;
-  --accent-quiet: #17292b;
-  --accent-quiet-hover: #1e3639;
-  --accent-ink: #0b1516;
-  --focus-ring: #6bc0c7;
+  --accent: #4bb8c4;
+  --accent-hover: #67c7d1;
+  --accent-active: #85d5dd;
+  --accent-quiet: #142e34;
+  --accent-quiet-hover: #1b3b43;
+  --accent-ink: #06171a;
+  --focus-ring: #4bb8c4;
 
-  --status-uploaded: #a0a7a9;
-  --status-uploaded-bg: #232729;
-  --status-queued: #d8b658;
-  --status-queued-bg: #2d2718;
-  --status-processing: #6fb4d4;
-  --status-processing-bg: #182930;
-  --status-completed: #74c091;
-  --status-completed-bg: #182a20;
-  --status-failed: #e08a83;
-  --status-failed-bg: #2e1c1a;
-  --status-flagged: #dd9c62;
-  --status-flagged-bg: #2e2118;
+  --status-uploaded: #9fafb5;
+  --status-uploaded-bg: #222c31;
+  --status-queued: #d6b45b;
+  --status-queued-bg: #2b2517;
+  --status-processing: #6bb2d2;
+  --status-processing-bg: #16272f;
+  --status-completed: #6cbe8b;
+  --status-completed-bg: #16281e;
+  --status-failed: #de8981;
+  --status-failed-bg: #2c1a18;
+  --status-flagged: #db9a60;
+  --status-flagged-bg: #2c2017;
 
-  --shadow-popup: 0 6px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 40%);
+  --sand: #a8946b;
+  --sand-soft: #2a2418;
+  --stone: #7d8180;
+  --chart-1: #4bb8c4;
+  --chart-2: #6f9e86;
+  --chart-3: #2c6d76;
+  --chart-4: #1f4e55;
+  --chart-5: #9c8a63;
+  --chart-grid: #26333a;
+  --chart-track: #222c31;
+
+  --shadow-popup: 0 8px 24px rgb(0 0 0 / 48%), 0 1px 3px rgb(0 0 0 / 40%);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 20%);
+  --shadow-spine: 1px 0 0 rgb(0 0 0 / 30%);
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 1ms;
     --motion: 1ms;
+    --motion-slow: 1ms;
   }
 }

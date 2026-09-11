@@ -328,10 +328,111 @@ the standalone detector's score distribution instead of VIAME's much higher stoc
 The override also raises sampling from VIAME's stock 5 FPS to 10 FPS. On the included real sample,
 that changed the result from 3 tracks/19 observations to 9 tracks/182 observations, with 7 tracks
 passing the existing `MIN_FISH_CONFIDENCE=0.60` rule. The official motion-fusion tracker was also
-tested; it produced 7 accepted tracks/124 observations at 10 FPS, so the lighter required pipeline
-remains the default.
+tested; it produced 7 accepted tracks/124 observations at 10 FPS. These are historical output counts,
+not ground truth or evidence of higher accuracy. The lighter required pipeline remains the default.
 
 The API container stays separate from VIAME and does not need GPU access.
+
+### Reproducible zero-label benchmark
+
+The [2026-09-11 measured results](docs/viame-zero-label-results.md) retain the production baseline:
+ten passes used 562.448 seconds of inference wall time, with no paid calls. Neither candidate met
+every promotion criterion; the evaluator and full Python suite passed 293 tests.
+
+From the repository root, using an **already running** local GPU Compose worker:
+
+```powershell
+.venv\Scripts\python.exe scripts/viame_zero_label_benchmark.py --docker
+```
+
+To recompute reports from existing outputs without any inference, append `--report-only`.
+
+The same command resumes without repeating completed, failed or interrupted inference passes.
+It does not build or pull images, download models, record cameras, call Fishial, load application
+settings, open a database, or change production pipelines/configuration. It freezes a content-addressed script,
+baseline pipeline and a numeric configuration allowlist under
+`data/outputs/viame-zero-label-benchmark/code/`. Existing snapshots are never overwritten; updated
+evaluators receive a separate hash-named snapshot and reuse completed CSVs. Keep the frozen code
+to reproduce a completed experiment. Output is local administrator material,
+not exposed by any new public API.
+
+The benchmark inventories installed fish pipelines/model hashes and ONNX input dimensions, deduplicates
+existing uploaded videos by SHA-256, and fixes three clips before inference. With fewer than three
+30-second sources, it uses early/middle/late non-overlapping thirds of the longest recording. Such
+clips may be shorter than 30 seconds; this limitation is recorded rather than padded with repeated
+footage. The middle clip also gets a saved 2 FPS, at-most-1280×720 live replay. The manifest includes
+source and clip hashes, source metadata, decoded frame timestamps, brightness, contrast and a simple
+motion summary. Existing job CSVs are rescored offline first; their unknown historical timing and
+settings exclude them from candidate ranking.
+
+The bounded plan runs the batch baseline on all three clips, repeats the middle baseline, compares
+the locally installed stock motion-fusion graph using current application confidence/buffer overrides,
+and compares the saved live clip with 30 versus 6 retained frames. The optional tenth pass repeats
+the retention candidate only if it changes the track partition. The journal caps all attempted
+VIAME launches at **10** and aggregate inference wall time at **5,400 seconds** (a conservative upper
+bound on GPU inference time). An unknown interrupted run is charged its full timeout, consumes a pass,
+and is never silently rerun. A process watchdog bounds inference even if the supervisor dies. A lock
+prevents concurrent benchmark writers. Do not delete the journal to bypass the budget.
+
+`report.json` contains per-clip and aggregate metrics, command/configuration provenance, runtimes,
+CSV diagnostics, determinism and all comparison components. `report.md` is the readable Pareto table.
+`disagreements-*.json` retains matched/unique boxes and timestamps for inspection. The parser maps
+one-based track-writer source-frame IDs to actual decoded PTS. The detection writer instead emits
+zero-based sampled ordinals and HH:MM:SS timestamps; those timestamps are matched to source PTS.
+It never divides source IDs by sampled FPS.
+It rejects non-finite, invalid-area and missing-timestamp observations, reports malformed rows,
+deduplicates repeated writer histories, and flags conflicting histories. Empty denominators are
+`null`, not fabricated zero scores.
+
+Interpret the metrics as **unlabeled proxies**, never precision, recall, mAP, F1, or a false-positive
+rate. More tracks alone earns no credit. Acceptance is rescored at .45/.50/.55/.60/.65 using each
+track's maximum confidence, matching application semantics. Coverage is the fraction of detector
+boxes matched at IoU ≥.95 to observations in tracks of at least 3 or 5 observations. Paired detector
+agreement uses one-to-one greedy IoU ≥.5 matching on nearest timestamps within .02 seconds; boxes
+at unaligned times remain in disagreement metadata. Cross-rate unmatched sampling times should not
+be interpreted as detector errors. Motion fusion shares the DEIM detector, so its agreement is
+partly correlated, not independent truth.
+
+Velocity divides horizontal/vertical center changes by image width/height and elapsed seconds.
+Acceleration uses consecutive velocity differences over the midpoint interval. Absolute log-area
+change is measured per second. Their distributions summarize **per-track medians** so long tracks
+do not dominate; gap distributions also retain pooled observation intervals. Duplicate overlap means
+IoU ≥.8 across at least three consecutive sampled frames. Fragmentation means an end/start pair
+within one second, with constant-velocity-predicted IoU ≥.3 and area ratio within a factor of two;
+it requires at least two ending-track observations. These are possible duplicates/fragments, not
+validated identities. Edge-only uses a 1% image margin; tiny means a side below four pixels or area
+below .001% of the frame. Smoother trajectories can hide bad joins, so no scalar score is used.
+
+The installed ByteTrack implementation increments an internal counter once per processed frame and
+removes lost tracks when the counter difference is **greater than** `track_buffer` (association runs
+before removal). Thirty means nominally 3 seconds at 10 FPS and 15 seconds at 2 FPS, with a boundary
+step; six means nominally 3 seconds at 2 FPS. Its three association gates bound **1 − IoU**, so lower
+values are stricter. The harness records these facts but does not add production tuning knobs without
+the required evidence. Live also has a separate cross-segment association path, which this replay
+does not validate. Fixed startup time is not reliably separated by the installed logs: first CSV
+write is only an upper bound including buffering; total wall time is the conservative reported cost.
+Peak device memory may include other GPU processes.
+
+Settings and Compose use batch 10 FPS and acceptance .60 by default, and live defaults to 5 FPS.
+The locally observed `.env` overrides live to 2 FPS and acceptance to .50. GPU Compose explicitly
+selects the checked-in DEIM/ByteTrack pipeline and frame offset −1; bare `Settings` still names the
+installed fusion pipeline and defaults to offset 0. Treat these profiles separately. The benchmark
+reads only explicitly allowed numeric values and never persists `.env` credentials.
+
+Promotion requires repeatability, two independent temporal proxy improvements on **every** clip,
+no unexplained >5% temporal regression, maintained fusion agreement, threshold stability, batch
+runtime ≤1.25× baseline (live ≤80% of source duration after startup amortization with no additional
+dropped segments), and tested/provenanced configuration changes. Unknown evidence is not a pass.
+The harness always leaves production untouched and publishes evidence for review. Training on
+self-generated boxes is not justified by these metrics. Optional future validation can start with
+about 30 stratified held-out frames with exhaustive fish boxes, including empty frames, and a few
+fully tracked short sequences for identity errors; this is not required to run the benchmark.
+
+Focused tests (the explicit temporary directory avoids restricted Windows temp directories):
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_viame_zero_label_benchmark.py --basetemp="$env:TEMP/viame-benchmark-tests" -p no:cacheprovider
+```
 
 ## VIAME Setup
 
@@ -804,11 +905,74 @@ without an explicit ceiling and prints a running call count. Use it to A/B `PREP
 over stored crops, which requires `KEEP_STAGED_CROPS=true` on the run that produced them, since
 the scratch wipe otherwise removes them.
 
-**Preprocessing ships off (`PREPROCESS=none`), and should stay off until data says otherwise.**
-Dim, green, low-contrast footage is a plausible reason the classifier declines to name fish, but
-that is a hypothesis, not a measurement: no stored crops exist from any completed session, so no
-A/B has been run. Turn on `KEEP_STAGED_CROPS`, capture a session, then use `--replay` to compare
-variants under a small fixed budget before changing the default.
+**Preprocessing ships off (`FISHIAL_PREPROCESS=none`).** Clean original JPEGs are staged
+once; only frames selected for recognition are transformed, immediately before durable
+reservation. Retries reuse those exact bytes. `none` is byte-identical (including when
+an upscale setting exists); `white_balance`, `clahe`, and `both` retain their pixel transforms
+and optional upscaling, now applied after decoding the original staged JPEG.
+
+`FISHIAL_PREPROCESS=funie_gan` adds optional offline FUnIE-GAN inference on these selected
+crops. It never changes detector input, full frames or annotated media, and adds no Fishial
+call site. Model/decode/inference/encoding failures abstain with `preprocessing failed`
+before any reservation. The unchanged ceiling is `fish_target * frames_per_fish +
+fishial_max_api_retries`; vote, score, region and target-IoU rules remain unchanged. Each
+frame's existing JSON audit records mode/model hash, original/submitted hashes, dimensions
+and timings. Enhanced bytes live only in memory; normal scratch/retention policy is unchanged.
+
+The GPU live worker reuses VIAME's bundled PyTorch/Pillow through its conditional launcher.
+The launcher keeps application site packages first: VIAME's own OpenCV lacks FFmpeg video
+decoding and must not replace the application's video-enabled OpenCV. Startup checks the
+decoder backend before claiming camera sessions.
+The API, mock worker and processing worker gain no inference dependency. The 28,105,229-byte
+model is downloaded explicitly, never at startup, and mounted read-only:
+
+```powershell
+.venv\Scripts\python.exe scripts/funie_model.py --output data/models/funie/funie_generator.pth
+```
+
+Pinned upstream commit: `8f934c834c94e007b00866186b9ee624dc2b7b69`.
+[Model source](https://raw.githubusercontent.com/xahidbuffon/FUnIE-GAN/8f934c834c94e007b00866186b9ee624dc2b7b69/PyTorch/models/funie_generator.pth).
+Required SHA-256: `e4fcb50e03868f1683c244b1c125def30df335ec43d9bb001b8700c03b8f2bd6`.
+The helper verifies size/hash before atomic rename. Minimum generator source, MIT licence
+and attribution to Md Jahidul Islam are in `app/vendor/funie_gan/`; no training code is included.
+
+Only after a labelled evaluation justifies enabling it, set `FISHIAL_PREPROCESS=funie_gan`,
+`FISHIAL_FUNIE_MODEL_PATH=/models/funie_generator.pth` and the digest above. Choose
+`FISHIAL_FUNIE_DEVICE=auto|cpu|cuda` (`auto` prefers CUDA) and JPEG quality 1–100 (default 95).
+The live worker validates safe state-dict loading, digest, shape and device at startup before
+claiming sessions. Missing/corrupt/incompatible models or unavailable requested CUDA fail
+locally; there is no fallback or automatic download. Run standalone commands in an environment
+with compatible PyTorch supporting `weights_only=True`, Pillow and OpenCV. Do not install
+the upstream legacy training requirements into the API environment.
+
+Run the offline benchmark with the existing GPU worker image (no camera or Fishial calls):
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm --no-deps --env FISHIAL_PREPROCESS=funie_gan --volume "${PWD}:/app:ro" --entrypoint bash live-worker /app/scripts/live_worker_viame.sh scripts/funie_benchmark.py --root /data/outputs --output /data/outputs/fishial-experiments/funie-offline-20260911 --model /models/funie_generator.pth --device cpu
+```
+
+Use `--device cuda` for the GPU measurement. `--output` explicitly retains paired JPEGs;
+the report includes all original capture-manifest and retained live Fishial crops, warm-up,
+decode/inference/encode timing, median/p95, RSS and GPU allocation peaks. The ordinary suite
+does not need torch/weights. An explicit real-model check is
+`python scripts/funie_smoke.py --model /models/funie_generator.pth` in the same environment,
+or `FUNIE_SMOKE=1` with `FUNIE_MODEL` pointing to local weights for the marked pytest test.
+To validate video decoding and enhancement together, use the same launcher command with
+`scripts/live_runtime_smoke.py --model /models/funie_generator.pth`. It generates a temporary
+synthetic H.264 segment, decodes ten frames and runs model inference; no camera or Fishial
+connection is made. Always use this launcher for application checks instead of sourcing
+VIAME directly, which changes the OpenCV implementation.
+
+The [offline results and future paid command](docs/funie-gan-results.md) document the two
+retained SmartBay crops and a separate four-call paired experiment directory. GAN output
+can suppress or invent species markings. Neither brightness nor nonempty/usable answers
+establish accuracy. Promotion needs representative scientific-name labels, more correct
+accepted identifications (or equal correct with fewer abstentions), no increase in confidently
+wrong answers, unchanged abstention rules/call ceiling, and acceptable latency/memory.
+No labelled end-to-end evidence exists, so `none` remains the justified production default.
+
+To disable, set `FISHIAL_PREPROCESS=none` and restart the live worker, then remove the
+optional model file/mount if desired. The worker no longer activates the ML runtime.
 
 The adapter follows Fishial's [v2 API reference](https://docs.fishial.ai/api/api_reference)
 and [tutorial](https://docs.fishial.ai/api/api_tutorial), checked on 2026-09-10: JSON credentials

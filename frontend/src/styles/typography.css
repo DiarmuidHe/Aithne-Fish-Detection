@@ -2,20 +2,23 @@
  * Two families: a text face for prose and labels, a monospace for every number,
  * ID, timecode, frame, confidence and hash. Numbers are tabular everywhere so a
  * column of confidences lines up.
+ *
+ * Nothing here is marketing-sized. A page title is 20px; the only figure
+ * allowed above that is a KPI value, and it stops at 26px.
  */
 
 h1 {
   font-size: var(--text-xl);
   line-height: var(--leading-xl);
   font-weight: var(--weight-strong);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
 }
 
 h2 {
-  font-size: var(--text-lg);
-  line-height: var(--leading-lg);
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
   font-weight: var(--weight-strong);
-  letter-spacing: -0.005em;
+  letter-spacing: -0.006em;
 }
 
 h3 {
@@ -60,6 +63,19 @@ samp {
   color: var(--ink-faint);
 }
 
+/*
+ * The eyebrow above a figure or a panel region. Small, tracked out, uppercase —
+ * the one place the interface uses caps, because it labels rather than reads.
+ */
+.label {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -76,4 +92,29 @@ samp {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/*
+ * Content entering a pane settles rather than appears. 160ms, 3px, and only on
+ * arrival — this never runs on a value that merely changed.
+ */
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.settle {
+  animation: settle-in var(--motion) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settle {
+    animation: none;
+  }
 }

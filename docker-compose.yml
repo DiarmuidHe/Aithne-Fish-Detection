@@ -102,6 +102,9 @@ services:
     profiles: [live]
     environment:
       <<: *fishial-environment
+      FISHIAL_PREPROCESS: "${FISHIAL_PREPROCESS:-none}"
+      FISHIAL_CLAHE_CLIP: "${FISHIAL_CLAHE_CLIP:-2.0}"
+      FISHIAL_UPSCALE_SHORT_SIDE: "${FISHIAL_UPSCALE_SHORT_SIDE:-0}"
     command: ["python3", "-m", "app.workers.live_worker"]
     stop_grace_period: 100s
 

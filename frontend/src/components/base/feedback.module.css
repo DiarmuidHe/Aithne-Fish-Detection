@@ -1,16 +1,19 @@
 /* Status, progress, empty states, skeletons, separators, toolbars. */
 
 .status {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   height: 20px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-control);
-  font-size: var(--text-xs);
-  line-height: var(--leading-xs);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
   font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
   white-space: nowrap;
+  overflow: hidden;
   /* Colour is never the only carrier: the word is always present. */
   color: var(--status-uploaded);
   background: var(--status-uploaded-bg);
@@ -50,6 +53,28 @@
   flex: none;
 }
 
+/* Queued and processing carry a travelling hairline instead of a spinner. */
+.status[data-active]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 40%;
+  height: 1.5px;
+  background: currentColor;
+  opacity: 0.7;
+  animation: status-sweep 1600ms var(--ease-in-out) infinite;
+}
+
+@keyframes status-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
 /* --- Progress and meter --------------------------------------------------- */
 
 .progressRoot {
@@ -68,6 +93,10 @@
   color: var(--ink-muted);
 }
 
+.progressLabel {
+  font-weight: var(--weight-medium);
+}
+
 .progressValue {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -76,16 +105,88 @@
 
 .progressTrack {
   position: relative;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface-active);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--chart-track);
   overflow: hidden;
+  /* An inset hairline gives the track an edge, so an empty bar still reads. */
+  box-shadow: inset 0 0 0 1px rgb(10 26 31 / 5%);
+}
+
+.progressRoot[data-size='small'] .progressTrack {
+  height: 4px;
 }
 
 .progressIndicator {
+  position: relative;
   height: 100%;
+  border-radius: 3px;
   background: var(--accent);
-  transition: width var(--motion) var(--ease-out);
+  overflow: hidden;
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+/*
+ * A filling bar is also moving: a slow diagonal texture travels along the
+ * filled part, so a bar that has stalled looks different from one that is
+ * merely slow.
+ */
+.progressIndicator::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    115deg,
+    rgb(255 255 255 / 18%) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgb(255 255 255 / 18%) 50%,
+    rgb(255 255 255 / 18%) 75%,
+    transparent 75%
+  );
+  background-size: 14px 14px;
+  animation: progress-stripes 900ms linear infinite;
+}
+
+@keyframes progress-stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 14px 0;
+  }
+}
+
+/* --- Indeterminate loading band ------------------------------------------- */
+
+.loadingBar {
+  width: 100%;
+}
+
+.loadingBarTrack {
+  position: relative;
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: var(--chart-track);
+  overflow: hidden;
+}
+
+.loadingBarIndicator {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: loading-sweep 1200ms var(--ease-in-out) infinite;
+}
+
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
 }
 
 .meterRoot {
@@ -101,13 +202,14 @@
   height: 4px;
   min-width: 40px;
   border-radius: 2px;
-  background: var(--surface-active);
+  background: var(--chart-track);
   overflow: hidden;
 }
 
 .meterIndicator {
   height: 100%;
   background: var(--ink-faint);
+  transition: width var(--motion) var(--ease-out);
 }
 
 .meterAccepted .meterIndicator {
@@ -125,25 +227,77 @@
 
 /* --- Skeletons ------------------------------------------------------------ */
 
+/*
+ * A sweep, not a blink. The band travels left to right across the placeholder
+ * so a loading region reads as one surface rather than a set of flashing parts.
+ */
 .skeleton {
+  position: relative;
   background: var(--surface-active);
   border-radius: 3px;
-  animation: pulse 1400ms ease-in-out infinite;
+  overflow: hidden;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 45%) 50%,
+    transparent
+  );
+  animation: skeleton-sweep 1500ms var(--ease-in-out) infinite;
+}
+
+:root[data-theme='dark'] .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 8%) 50%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 8%) 50%, transparent);
   }
-  50% {
-    opacity: 0.55;
+}
+
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
   }
+}
+
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Rows arrive in sequence, 45 ms apart, so the list builds downward. */
+.skeletonRow {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  animation: settle-in var(--motion) var(--ease-out) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
+  .skeleton::after,
+  .loadingBarIndicator,
+  .progressIndicator::after,
+  .status[data-active]::after {
     animation: none;
+  }
+
+  .skeletonRow {
+    animation: none;
+  }
+
+  .status[data-active]::after {
+    display: none;
   }
 }
 
@@ -154,13 +308,13 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-10) var(--space-6);
   max-width: 62ch;
 }
 
 .emptyTitle {
-  font-size: var(--text-base);
-  line-height: var(--leading-base);
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
   font-weight: var(--weight-strong);
 }
 
@@ -177,6 +331,7 @@
   gap: var(--space-2);
   padding: var(--space-4);
   border: 1px solid var(--status-failed);
+  border-left-width: 3px;
   border-radius: var(--radius-control);
   background: var(--status-failed-bg);
   color: var(--ink);

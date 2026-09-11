@@ -1,97 +1,298 @@
-.controls {
+/*
+ * Live monitoring: one instrument, then the record of what went past it.
+ *
+ * The console is a single dark slab — toolbar, footage, counts, lag line —
+ * running edge to edge on the marine spine's own ground. Inside it every
+ * semantic token is remapped to the chrome family, so the selects, number
+ * fields, buttons and the activity chart adapt without a second set of rules.
+ * Nothing inside the slab is a card; the parts are divided by hairlines.
+ */
+
+.console {
+  /* Escape the page gutter: the instrument reaches the workspace edges. */
+  margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--chrome);
+  color: var(--chrome-ink);
+  border-bottom: 1px solid var(--chrome-hairline);
+
+  /* --- The remap. Everything below this inherits the marine spine. --- */
+  --surface: var(--chrome);
+  --surface-raised: var(--chrome-raised);
+  --surface-sunken: var(--chrome);
+  --surface-hover: var(--chrome-hover);
+  --surface-active: var(--chrome-active);
+  --ink: var(--chrome-ink);
+  --ink-muted: var(--chrome-ink-muted);
+  --ink-faint: var(--chrome-ink-faint);
+  --hairline: var(--chrome-hairline);
+  --hairline-strong: var(--chrome-hairline-strong);
+  --accent: var(--chrome-accent);
+  --accent-hover: #67c7d1;
+  --accent-active: #85d5dd;
+  --accent-quiet: var(--chrome-accent-quiet);
+  --accent-quiet-hover: #1b3b43;
+  --accent-ink: #06171a;
+  --focus-ring: var(--chrome-accent);
+  --chart-1: var(--chrome-accent);
+  --chart-4: #2c6d76;
+  --chart-grid: var(--chrome-hairline);
+  --chart-track: var(--chrome-raised);
+  --shadow-panel: none;
+}
+
+/* --- The camera toolbar ----------------------------------------------------- */
+
+.toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-4);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--hairline);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--chrome-hairline);
+  flex: none;
 }
 
-.speciesControls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
+/* A rule between the camera choice and the identification settings. */
+.toolbarRule {
+  width: 1px;
+  align-self: stretch;
+  margin-block: 2px;
+  background: var(--chrome-hairline);
 }
 
-.guard {
+.toolbarNote {
+  max-width: 34ch;
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
-  color: var(--ink-muted);
-  flex-basis: 100%;
+  color: var(--chrome-ink-faint);
 }
 
-.monitor {
+.toolbarGuard {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--chrome-ink-faint);
+  text-align: right;
+}
+
+/* --- Footage and counts ----------------------------------------------------- */
+
+.body {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
-  gap: var(--space-8);
+  grid-template-columns: minmax(0, 1fr) 292px;
+  min-width: 0;
 }
 
 .stage {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  position: relative;
   min-width: 0;
+  background: #000;
 }
 
 .player {
   width: 100%;
+  /* The footage is the hero: it takes the height the window will give it. */
+  max-height: calc(100vh - 320px);
   aspect-ratio: 16 / 9;
   object-fit: contain;
-  background: var(--surface-sunken);
-  border: 1px solid var(--hairline);
+  background: #000;
+  display: block;
+  margin-inline: auto;
 }
 
 .placeholder {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background: var(--surface-sunken);
-  border: 1px solid var(--hairline);
-  color: var(--ink-muted);
-  font-size: var(--text-sm);
-}
-
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4) var(--space-6);
-  margin: 0;
-}
-
-.metric {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 320px);
+  color: var(--chrome-ink-faint);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--space-6);
 }
 
-.metricValue {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-xl);
-  line-height: var(--leading-xl);
+.placeholderBar {
+  display: block;
+  width: min(260px, 60%);
 }
 
-.metricLabel {
+/* The overlay label: understated, readable on any frame, never a badge. */
+.stageLabel {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-control);
+  background: rgb(10 20 24 / 72%);
+  color: #e8eef0;
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
-  color: var(--ink-muted);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
+  pointer-events: none;
 }
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff5a4d;
+  animation: live-pulse 1800ms var(--ease-in-out) infinite;
+}
+
+.liveWord {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: #ffb3ac;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* --- The counts column ------------------------------------------------------ */
 
 .side {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  min-width: 0;
+  border-left: 1px solid var(--chrome-hairline);
+}
+
+.sidePad {
+  padding: var(--space-4);
+}
+
+.sideIdle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+}
+
+.sideIdleBody {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--chrome-ink-faint);
+}
+
+/*
+ * Three figures stacked as rows with rules between them. In a column this
+ * narrow, cards wrap two-and-one and the orphan reads as a mistake.
+ */
+.stats {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  flex: none;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--chrome-hairline);
+}
+
+.statLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--chrome-ink-faint);
+}
+
+.statNote {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: var(--weight-normal);
+  color: var(--chrome-ink-muted);
+}
+
+.statValue {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  line-height: var(--leading-xl);
+  letter-spacing: -0.02em;
+  color: var(--chrome-ink);
+}
+
+/* A figure that is currently moving takes the accent; the rest stay ink. */
+.stat[data-live] .statValue {
+  color: var(--chrome-accent);
+}
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
   min-width: 0;
 }
+
+.activityHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/*
+ * The activity plot is a trace, not a chart: a fixed short height keeps it
+ * reading as an instrument line whether the column is 292px or the full width.
+ */
+.activity svg {
+  height: 128px;
+}
+
+.activityRange {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--chrome-ink-faint);
+}
+
+/* --- The lag line ----------------------------------------------------------- */
 
 .statusLine {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-5);
+  border-top: 1px solid var(--chrome-hairline);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--chrome-ink-faint);
+  flex: none;
+}
+
+.statusLine[data-running] {
+  color: var(--chrome-ink-muted);
 }
 
 .lag {
@@ -99,66 +300,44 @@
   font-variant-numeric: tabular-nums;
 }
 
+.lagDot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--chrome-hairline-strong);
+  flex: none;
+}
+
+.lagNote {
+  color: var(--chrome-accent);
+}
+
+/* --- Finalised histories ----------------------------------------------------- */
+
 .galleryFilters {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: var(--space-4);
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding-bottom: var(--space-3);
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
   border-bottom: 1px solid var(--hairline);
 }
 
-.card video,
-.card img {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  background: var(--surface-sunken);
-  border: 1px solid var(--hairline);
-}
-
-.cardTitle {
-  font-size: var(--text-sm);
-  line-height: var(--leading-sm);
-  font-weight: var(--weight-medium);
-}
-
-.cardMeta {
+.shownCount {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-xs);
-  line-height: var(--leading-xs);
   color: var(--ink-muted);
 }
 
-.cardBadge {
-  font-size: var(--text-xs);
-  line-height: var(--leading-xs);
-  color: var(--ink-muted);
-}
-
-.cardBadge[data-state='review_required'],
-.cardBadge[data-state='error'] {
-  color: var(--status-flagged);
-}
+/* --- Species identification --------------------------------------------------- */
 
 .speciesList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0 var(--space-8);
+  margin: 0;
 }
 
 .speciesRow {
@@ -167,17 +346,84 @@
   gap: var(--space-3);
   align-items: baseline;
   font-size: var(--text-sm);
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--hairline);
 }
 
+.speciesName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .speciesCount {
+  margin: 0;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.speciesNote {
+  margin-top: var(--space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    animation: none;
+  }
+}
+
+@media (max-width: 1200px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side {
+    border-left: 0;
+    border-top: 1px solid var(--chrome-hairline);
+  }
+
+  /* Stacked, the counts read better as a strip than as a tall column. */
+  .stats {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    flex: 1 1 180px;
+    border-bottom: 0;
+    border-right: 1px solid var(--chrome-hairline);
+  }
+
+  .stat:last-child {
+    border-right: 0;
+  }
+
+  .activity {
+    border-top: 1px solid var(--chrome-hairline);
+  }
+
+  .player,
+  .placeholder {
+    max-height: none;
+  }
 }
 
 @media (max-width: 1000px) {
-  .monitor {
-    grid-template-columns: minmax(0, 1fr);
+  .console {
+    margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) 0;
+  }
+
+  .toolbar,
+  .statusLine {
+    padding-inline: var(--space-4);
+  }
+
+  .toolbarGuard {
+    margin-left: 0;
+    text-align: left;
+    flex-basis: 100%;
   }
 }

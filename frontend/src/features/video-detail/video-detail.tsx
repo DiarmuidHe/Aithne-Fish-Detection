@@ -4,7 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { annotateVideo, fetchVideo, generateFishClips, startProcessing } from '@/api/videos';
 import { Button } from '@/components/base/button';
-import { EmptyState, PanelError, Skeleton, StatusPill } from '@/components/base/feedback';
+import {
+  EmptyState,
+  LoadingBar,
+  PanelError,
+  Skeleton,
+  StatusPill,
+} from '@/components/base/feedback';
 import { Confirm, Hint } from '@/components/base/popups';
 import { TabBar, TabPanel } from '@/components/base/tabs';
 import { useToast } from '@/components/base/toast';
@@ -113,10 +119,19 @@ export function VideoDetail({
 
   if (video.isLoading) {
     return (
-      <div className={styles.panel}>
-        <Skeleton width="45%" height={22} />
-        <Skeleton width="70%" height={13} />
-        <Skeleton height={140} />
+      <div className={styles.detail}>
+        <div className={styles.header}>
+          <Skeleton width="45%" height={18} />
+          <Skeleton width="70%" height={12} />
+          <div className={styles.actions}>
+            <Skeleton width={120} height={26} radius={5} />
+            <Skeleton width={150} height={26} radius={5} />
+          </div>
+        </div>
+        <div className={styles.panel}>
+          <Skeleton height={96} radius={6} />
+          <Skeleton height={140} radius={6} />
+        </div>
       </div>
     );
   }
@@ -153,30 +168,37 @@ export function VideoDetail({
 
         <div className={styles.meta}>
           <span>{formatDateTime(data.created_at)}</span>
-          <span>·</span>
+          <span className={styles.metaDot} aria-hidden="true" />
           <span>{data.camera_id ?? 'No camera'}</span>
-          <span>·</span>
+          <span className={styles.metaDot} aria-hidden="true" />
           <span className={styles.metaValue}>{formatBytes(data.size_bytes)}</span>
           {data.duration_seconds ? (
             <>
-              <span>·</span>
+              <span className={styles.metaDot} aria-hidden="true" />
               <span className={styles.metaValue}>{formatDuration(data.duration_seconds)}</span>
             </>
           ) : null}
           {data.fps ? (
             <>
-              <span>·</span>
+              <span className={styles.metaDot} aria-hidden="true" />
               <span className={styles.metaValue}>{data.fps.toFixed(2)} fps</span>
             </>
           ) : null}
         </div>
 
         {active ? (
-          <p className={styles.callout} aria-live="polite">
-            {data.processing_status === 'queued'
-              ? 'Waiting for a worker. This updates automatically; you can leave the page open.'
-              : 'VIAME processing is in progress. This updates automatically.'}
-          </p>
+          <div className={styles.callout} aria-live="polite">
+            <p>
+              {data.processing_status === 'queued'
+                ? 'Waiting for a worker. This updates automatically; you can leave the page open.'
+                : 'VIAME processing is in progress. This updates automatically.'}
+            </p>
+            <LoadingBar
+              label={
+                data.processing_status === 'queued' ? 'Waiting for a worker' : 'Processing'
+              }
+            />
+          </div>
         ) : null}
 
         {jobError ? (

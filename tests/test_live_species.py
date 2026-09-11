@@ -10,6 +10,12 @@ from app.services.live_monitor import scratch_path
 from app.services.live_species import SpeciesIdentifier
 
 
+def crop_bytes():
+    import cv2
+    import numpy as np
+    return cv2.imencode(".jpg", np.full((120, 200, 3), [30, 70, 90], np.uint8))[1].tobytes()
+
+
 @pytest.fixture
 def enabled_settings(test_settings):
     from pydantic import SecretStr
@@ -46,7 +52,7 @@ def staged_track(db, session, settings, count=5, scores=None, measures=None,
     directory.mkdir(parents=True)
     staged = []
     for number in range(count):
-        (directory / f"{number:012d}.jpg").write_bytes(b"fish-crop")
+        (directory / f"{number:012d}.jpg").write_bytes(crop_bytes())
         staged.append({"frame_number": number, "timestamp": number, "window": number,
                        "score": (scores or {}).get(number, 1.0 - number / 100),
                        "expected_box": [.1, .1, .9, .9], "crop_size": [200, 120],
@@ -63,7 +69,7 @@ class StubClient:
         self.results, self.calls, self.boxes = iter(results), 0, []
 
     def identify(self, image, expected_box=None):
-        assert image == b"fish-crop"
+        assert image == crop_bytes()
         self.calls += 1
         self.boxes.append(expected_box)
         value = next(self.results)
@@ -73,6 +79,91 @@ class StubClient:
             return FishialPrediction(value, {}, 0, 1.0, 1)
         name, score = value
         return FishialPrediction([(name, score)], {"stored": True}, 0, 1.0, 1)
+
+
+@pytest.mark.parametrize("failure", [401, 429, 500])
+def test_enhance_once_before_reservation_and_retry_reuses_bytes(
+        db_session_factory, enabled_settings, failure):
+    import hashlib
+
+    from app.services.fish_enhancement import PROVENANCE, EnhancedCrop, enhance_crop
+    events, sent, boxes = [], [], []
+    enabled_settings.fishial_preprocess = "funie_gan"
+    enabled_settings.fishial_funie_model_sha256 = "0" * 64
+    def fake_enhance(image, settings):
+        events.append("enhance")
+        adjusted = enhance_crop(image, settings.model_copy(update={"fishial_preprocess": "both"}))
+        return EnhancedCrop(adjusted.image, {**adjusted.metadata, "mode": "funie_gan",
+            "model_id": PROVENANCE["model_id"], "model_sha256": "0" * 64})
+    def handle(request):
+        if request.url.path.endswith("auth"):
+            return httpx.Response(200, json={"access_token": "secret-token"})
+        events.append("send")
+        sent.append(request.content)
+        assert events[-2] == "reserve"
+        return httpx.Response(failure) if len(sent) == 1 else httpx.Response(200, json={
+            "ok": True, "objects": [{"species": [{"id": "fish", "certainty": .9}]}],
+            "definitions": {"fish": {"scientificName": "Pollachius virens"}}})
+    with db_session_factory() as db, httpx.Client(transport=httpx.MockTransport(handle)) as http:
+        session = session_row(db)
+        track = staged_track(db, session, enabled_settings, count=3)
+        audit = track.fishial_votes
+        expected = [0, .08, .45, .92]  # Off-center edge-clamped target.
+        for staged in audit["staged"]:
+            staged["expected_box"] = expected
+        track.fishial_votes_json = json.dumps(audit)
+        db.commit()
+        client = FishialClient(enabled_settings, http)
+        real_identify = client.identify
+        def identify(image, box):
+            boxes.append(box)
+            return real_identify(image, box)
+        client.identify = identify
+        identifier = SpeciesIdentifier(db, session, enabled_settings, client, fake_enhance)
+        real_reserve = identifier._reserve
+        def reserve(*args):
+            assert "preprocessing" in track.fishial_votes["frames"][-1]
+            events.append("reserve")
+            return real_reserve(*args)
+        identifier._reserve = reserve
+        identifier.run(final=True)
+        assert events[:5] == ["enhance", "reserve", "send", "reserve", "send"]
+        assert events.count("enhance") == 3 and len(sent) == 4
+        assert sent[0] == sent[1] and sent[0] != crop_bytes()
+        assert boxes == [expected] * 3
+        meta = track.fishial_votes["frames"][0]["preprocessing"]
+        assert meta["submitted_sha256"] == hashlib.sha256(sent[0]).hexdigest()
+        assert meta["model_id"] == PROVENANCE["model_id"] and "inference_ms" in meta
+        assert all(secret not in json.dumps(meta) for secret in ("secret-token", "https://", str(enabled_settings.output_root)))
+        assert not scratch_path(enabled_settings, str(session.id), str(track.id), "fishial").exists()
+
+
+def test_preprocessing_failure_spends_nothing_and_stops_when_consensus_unreachable(
+        db_session_factory, enabled_settings):
+    calls = []
+    def fail(image, settings):
+        calls.append(image)
+        raise RuntimeError("secret-token private-image private-path")
+    with db_session_factory() as db:
+        session = session_row(db)
+        track = staged_track(db, session, enabled_settings, count=3)
+        client = StubClient([])
+        identifier = SpeciesIdentifier(db, session, enabled_settings, client, fail)
+        identifier._reserve = lambda *args: pytest.fail("Reserved a failed enhancement")
+        identifier.run(final=True)
+        assert len(calls) == 1 and client.calls == 0 and session.species_id_api_calls == 0
+        assert track.fishial_state == "review_required"
+        assert track.fishial_votes["frames"][0]["reason"] == "preprocessing failed"
+        assert "secret" not in track.fishial_votes_json
+
+
+def test_unselected_candidates_are_never_enhanced(db_session_factory, enabled_settings):
+    with db_session_factory() as db:
+        session = session_row(db)
+        staged_track(db, session, enabled_settings, status="active")
+        identifier = SpeciesIdentifier(db, session, enabled_settings, StubClient([]),
+            lambda *args: pytest.fail("Enhanced an unpaid candidate"))
+        identifier.run()
 
 
 @pytest.mark.parametrize("results,state,tally,calls,confidence,reason", [

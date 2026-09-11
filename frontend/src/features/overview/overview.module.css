@@ -1,84 +1,257 @@
-.system {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-8);
-  flex-wrap: wrap;
-}
+/*
+ * The Overview in four materials, top to bottom:
+ *
+ *   console strip  — dark, full bleed, flush to the application bar
+ *   attention      — rules on the page ground, no container at all
+ *   workspace      — one bordered surface split by a vertical rule
+ *   library band   — sunken ground, two lists, one rule between them
+ *
+ * Nothing here repeats the material directly above it, which is what stops the
+ * page reading as a stack of identical cards.
+ */
 
-.systemMain {
+/* --- The station line on the end of the strip ------------------------------ */
+
+.station {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-  flex: 1 1 380px;
+  gap: 1px;
+  text-align: right;
 }
 
-.systemLine {
+.stationName {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  font-weight: var(--weight-medium);
+  color: var(--chrome-ink);
+  white-space: nowrap;
+}
+
+.stationMeta {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--chrome-ink-faint);
+  white-space: nowrap;
+}
+
+/* --- Needs attention -------------------------------------------------------
+ * Two or three sentences that need a person. They sit on the page itself under
+ * a rule; putting them in a panel would make them look like a report rather
+ * than like something outstanding.
+ */
+
+.attention {
+  display: flex;
+  flex-direction: column;
+}
+
+.attentionLabel {
+  padding-bottom: var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.attentionRow {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  /* The tone is a rule on the left edge, not a wash across the row. */
+  box-shadow: inset 3px 0 0 var(--status-uploaded);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
-.systemMode {
-  font-size: var(--text-base);
-  line-height: var(--leading-base);
+.attentionRow:last-child {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.attentionRow[data-tone='failed'] {
+  box-shadow: inset 3px 0 0 var(--status-failed);
+}
+
+.attentionRow[data-tone='flagged'] {
+  box-shadow: inset 3px 0 0 var(--status-flagged);
+}
+
+.attentionRow:hover {
+  background: var(--surface-raised);
+}
+
+.attentionText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.attentionGo {
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
+  color: var(--accent);
+  white-space: nowrap;
+  /* Nudges toward the row it opens, 110 ms, once. */
+  transition: transform var(--motion-fast) var(--ease-out);
 }
 
-.queue {
-  display: flex;
-  gap: var(--space-8);
-  margin: 0;
+.attentionRow:hover .attentionGo {
+  transform: translateX(2px);
 }
 
-.queueFigure {
+/* --- The working surface ----------------------------------------------------
+ * What arrived and how far review has got are one question, so they share one
+ * bordered surface and are separated by a rule rather than by a gap.
+ */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+  min-width: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+.workspaceMain {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  min-width: 0;
 }
 
-.queueLabel {
+.workspaceSide {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* One step back from the main column, so the rule reads as a fold. */
+  background: var(--surface-sunken);
+  border-left: 1px solid var(--hairline);
+}
+
+.regionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.regionHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.regionTitle {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-strong);
+}
+
+.regionNote {
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
   color: var(--ink-muted);
 }
 
-.queueValue {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-xl);
-  line-height: var(--leading-xl);
+.regionPad {
+  padding: var(--space-4);
 }
 
-.queueValue[data-tone='failed'] {
-  color: var(--status-failed);
-}
+/* --- Recent recordings ------------------------------------------------------ */
 
-/* --- Review debt ---------------------------------------------------------- */
-
-.debt {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-10);
-}
-
-.debtFigure {
+.recent {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+}
+
+/* Rows arrive in sequence so the list builds downward rather than blinking in. */
+.recent li {
+  animation: settle-in var(--motion) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recent li {
+    animation: none;
+  }
+}
+
+.recentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 8ch auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--row-height-media);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
   color: inherit;
   text-decoration: none;
-  border-bottom: 2px solid transparent;
-  padding-bottom: 2px;
+  font-size: var(--text-sm);
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
-.debtFigure:hover {
-  border-bottom-color: var(--accent);
+.recent li:last-child .recentRow {
+  border-bottom: 0;
 }
 
-.debtValue {
+.recentRow:hover {
+  background: var(--surface-hover);
+}
+
+.recentName {
+  min-width: 0;
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentRow:hover .recentName {
+  color: var(--accent);
+}
+
+.recentWhen {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.recentCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  text-align: right;
+}
+
+/* --- Review completion ------------------------------------------------------ */
+
+.completion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.completionHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.completionValue {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-2xl);
@@ -86,44 +259,171 @@
   letter-spacing: -0.02em;
 }
 
-.debtLabel {
-  font-size: var(--text-xs);
-  line-height: var(--leading-xs);
-  color: var(--ink-muted);
+/* One bar in three parts, rather than three bars or a ring. */
+.completionBar {
+  display: flex;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--chart-track);
+  overflow: hidden;
 }
 
-/* --- Recent --------------------------------------------------------------- */
-
-.recent {
-  border-top: 1px solid var(--hairline);
+.completionSegment {
+  height: 100%;
+  transform-origin: left center;
+  animation: grow-segment var(--motion-slow) var(--ease-out) both;
+  transition: width var(--motion) var(--ease-out);
 }
 
-.recentRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+/*
+ * Water, kelp, sand: the three parts run down the marine sequence rather than
+ * borrowing status colours, because "not reviewed yet" is a position in the
+ * work, not an alarm.
+ */
+.completionSegment[data-part='complete'] {
+  background: var(--chart-1);
+}
+
+.completionSegment[data-part='in-progress'] {
+  background: var(--chart-2);
+}
+
+.completionSegment[data-part='awaiting'] {
+  background: var(--chart-5);
+}
+
+@keyframes grow-segment {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .completionSegment {
+    animation: none;
+  }
+}
+
+.completionKey {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.completionKeyItem {
+  display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-2) 0;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 3px 0;
   border-bottom: 1px solid var(--hairline);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
-.recentLink {
-  min-width: 0;
-  color: inherit;
+.completionKeyItem:last-child {
+  border-bottom: 0;
+}
+
+.completionKeyLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-muted);
   text-decoration: none;
-  font-weight: var(--weight-medium);
 }
 
-.recentLink:hover {
+.completionKeyLink:hover {
   color: var(--accent);
-  text-decoration: underline;
 }
+
+.completionSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.completionSwatch[data-part='complete'] {
+  background: var(--chart-1);
+}
+
+.completionSwatch[data-part='in-progress'] {
+  background: var(--chart-2);
+}
+
+.completionSwatch[data-part='awaiting'] {
+  background: var(--chart-5);
+}
+
+.completionKeyValue {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* --- The library band -------------------------------------------------------
+ * Two lists on the band's own ground, divided by a rule. Giving each one a
+ * border would put two more rectangles on a page that has just escaped them.
+ */
 
 .charts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: var(--space-8);
+  align-items: start;
+}
+
+.chart {
+  min-width: 0;
+  padding-inline: var(--space-6);
+  border-left: 1px solid var(--hairline-strong);
+}
+
+.chart:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.chart:last-child {
+  padding-right: 0;
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /*
+   * Stacked, the rule between the two lists becomes a rule above the second
+   * one. The grid has to collapse with it, or the second column inherits the
+   * stacking offset while still sitting beside the first.
+   */
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspaceSide {
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .chart {
+    padding-inline: 0;
+    padding-top: var(--space-5);
+    margin-top: var(--space-5);
+    border-left: 0;
+    border-top: 1px solid var(--hairline-strong);
+  }
+
+  .chart:first-child {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: 0;
+  }
 }
 
 @media (max-width: 700px) {
@@ -132,7 +432,7 @@
     row-gap: var(--space-1);
   }
 
-  .queue {
-    gap: var(--space-6);
+  .recentCount {
+    text-align: left;
   }
 }

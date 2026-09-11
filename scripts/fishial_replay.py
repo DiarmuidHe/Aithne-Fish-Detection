@@ -24,18 +24,25 @@ import hashlib
 import json
 import sys
 from collections import Counter
-from pathlib import Path
 from functools import partial
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.config import Settings, get_settings
+from app.config import PREPROCESS_MODES, Settings, get_settings
 from app.db.models import LiveFishTrack, LiveMonitorSession
+from app.services.fish_enhancement import (
+    PROVENANCE,
+    EnhancementError,
+    enhance_crop,
+    failure_metadata,
+    initialize_enhancement,
+)
 from app.services.fishial import FishialClient, FishialError, trim_raw
-from app.services.species_quality import consensus_outlook, preprocess_crop, review_diagnostics
+from app.services.species_quality import consensus_outlook, review_diagnostics
 from app.services.species_region import filter_species
 
 
@@ -137,7 +144,10 @@ def rescore_track(track, settings, region, client_parse, geometry=None, frames_p
             continue
         try:
             prediction = client_parse(
-                raw, target_box(staged_by_number.get(number), geometry.get(number)))
+                raw, target_box({**(staged_by_number.get(number) or {}),
+                                 "crop_size": (frame.get("preprocessing") or {}).get(
+                                     "output_dimensions", (staged_by_number.get(number) or {}).get("crop_size"))},
+                                geometry.get(number)))
         except FishialError as exc:
             record["reason"] = exc.reason
             replayed.append(record)
@@ -275,6 +285,8 @@ def replay(args, settings) -> int:
     from scripts.fishial_replay_journal import ReplayJournal
 
     directory = Path(args.replay)
+    if args.max_calls is None or args.max_calls <= 0:
+        raise SystemExit("Replay requires an explicit positive --max-calls ceiling")
     if args.capture_source:
         from scripts.fishial_capture import collect
         collect(directory, args.capture_source, settings, args.capture_seconds)
@@ -285,6 +297,12 @@ def replay(args, settings) -> int:
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     entries = {entry["file"]: entry for entry in manifest.get("crops", [])}
     modes = ["none", "clahe", "white_balance"] if args.compare_preprocess else [settings.fishial_preprocess]
+    if args.preprocess_modes is not None:
+        modes = parse_modes(args.preprocess_modes)
+        if manifest.get("preprocess") != "none" or set(entries) != {p.name for p in crops}:
+            raise SystemExit("Paired replay requires clean original crops with a capture manifest")
+        if any(not entry.get("expected_box") for entry in entries.values()):
+            raise SystemExit("Paired replay requires stored target boxes")
     if args.compare_preprocess:
         if len(crops) != 2 or set(entries) != {p.name for p in crops} or manifest.get("preprocess") != "none":
             raise SystemExit("Comparison requires two clean original crops with a capture manifest")
@@ -294,64 +312,89 @@ def replay(args, settings) -> int:
     # Freeze bytes before hashing: a file changed during a run cannot change what
     # is sent under an existing journal. Stored variants also make the test reviewable.
     inputs = {path.name: path.read_bytes() for path in crops}
+    configured = {mode: Settings.model_validate({**settings.model_dump(), "fishial_preprocess": mode})
+                  for mode in modes}
+    for tuned in configured.values():
+        initialize_enhancement(tuned)
     spec = {"max_calls": args.max_calls, "max_retries": settings.fishial_max_api_retries,
+            "version": 2, "schedule": "crop-first-with-pair-holdback",
+            "model": {"id": PROVENANCE["model_id"], "sha256": settings.fishial_funie_model_sha256}
+                     if "funie_gan" in modes else None,
             "modes": modes, "region": region, "entries": entries,
             "hashes": {name: hashlib.sha256(data).hexdigest() for name, data in inputs.items()},
             "settings": {name: getattr(settings, name) for name in (
                 "fishial_clahe_clip", "fishial_upscale_short_side", "fishial_min_species_score",
-                "fishial_min_frame_margin", "fishial_object_match_min_iou", "fishial_object_match_min_margin")}}
+                "fishial_min_frame_margin", "fishial_object_match_min_iou", "fishial_object_match_min_margin",
+                "fishial_funie_device", "fishial_funie_jpeg_quality", "fishial_region_filter_enabled",
+                "fishial_min_votes", "fishial_vote_ratio", "fishial_min_frames_to_vote")}}
     journal = ReplayJournal(directory / "replay.sqlite", spec)
     client = None
     try:
-        # Mode-first order gives every fish a baseline before testing corrections.
-        for mode in modes:
-            for crop in crops:
+        for crop in crops:
+            known = journal.results()
+            pending = [mode for mode in modes if f"{mode}/{crop.name}" not in known]
+            # Never begin a new crop if the remaining allowance cannot cover all sides.
+            if args.max_calls - journal.spent < len(pending):
+                break
+            for position, mode in enumerate(pending):
                 key = f"{mode}/{crop.name}"
                 if journal.spent >= args.max_calls or not journal.claim(key):
                     continue
                 payload = inputs[crop.name]
-                if mode != "none" or settings.fishial_upscale_short_side:
-                    import cv2
-                    import numpy as np
-                    original = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
-                    if original is None:
-                        journal.finish(key, {"reason": "unreadable crop"})
-                        continue
-                    tuned = settings.model_copy(update={"fishial_preprocess": mode})
-                    ok, encoded = cv2.imencode(".jpg", preprocess_crop(original, tuned, cv2),
-                                               [cv2.IMWRITE_JPEG_QUALITY, 95])
-                    if not ok:
-                        journal.finish(key, {"reason": "unreadable crop"})
-                        continue
-                    payload = encoded.tobytes()
+                try:
+                    enhanced = enhance_crop(payload, configured[mode])
+                except EnhancementError:
+                    journal.finish(key, {"reason": "preprocessing failed", "usable": False,
+                                         "preprocessing": failure_metadata(payload, configured[mode])})
+                    continue
+                payload = enhanced.image
+                journal.finish(key, {"reason": "interrupted; not replayed",
+                                     "preprocessing": enhanced.metadata})
                 variant = directory / "variants" / mode / crop.name
                 variant.parent.mkdir(parents=True, exist_ok=True)
                 variant.write_bytes(payload)
                 if client is None:
                     client = FishialClient(settings)
-                client.before_image_call = partial(journal.reserve, key)
+                client.before_image_call = partial(journal.reserve, key,
+                                                  holdback=len(pending) - position - 1)
                 print(f"  {key} (reserved {journal.spent}/{args.max_calls})", flush=True)
                 try:
                     prediction = client.identify(payload, entries.get(crop.name, {}).get("expected_box"))
-                    ranked, dropped = filter_species(prediction.species, region)
+                    ranked, dropped = filter_species(prediction.species,
+                        region if settings.fishial_region_filter_enabled else None)
                     margin = ranked[0][1] - (ranked[1][1] if len(ranked) > 1 else 0) if ranked else 0
                     usable = bool(ranked and ranked[0][1] >= settings.fishial_min_species_score
                                   and margin >= settings.fishial_min_frame_margin)
                     raw = trim_raw(prediction.raw)
                     raw.pop("queryToken", None)
                     result = {"species": ranked, "dropped": dropped, "usable": usable,
+                              "object_detected": prediction.object_count > 0,
+                              "nonempty_species": bool(prediction.species),
+                              "accepted_top_species": ranked[0][0] if usable else None,
+                              "certainty": ranked[0][1] if ranked else None,
+                              "regional_rejection": bool(dropped),
                               "object_index": prediction.object_index, "object_iou": prediction.object_iou,
                               "raw": raw}
                     print(f"      species={ranked}, usable={usable}", flush=True)
                 except FishialError as exc:
                     result = {"reason": exc.reason}
                     print(f"      error: {exc.reason}", flush=True)
+                result["preprocessing"] = enhanced.metadata
+                label = entries.get(crop.name, {}).get("ground_truth_scientific_name")
+                if label:
+                    result["ground_truth_scientific_name"] = label
+                    result["top1"] = ("abstained" if not result.get("usable") else
+                                      "correct" if result["accepted_top_species"] == label else "wrong")
                 journal.finish(key, result)
         results = journal.results()
         report = {"calls_reserved": journal.spent, "max_calls": args.max_calls,
                   "source": manifest.get("source"), "results": results,
                   "usable_by_mode": {mode: sum(bool(results.get(f"{mode}/{p.name}", {}).get("usable"))
                                                 for p in crops) for mode in modes},
+                  "labelled_by_mode": {mode: dict(Counter(
+                      results[f"{mode}/{p.name}"].get("top1", "abstained") for p in crops
+                      if entries.get(p.name, {}).get("ground_truth_scientific_name")
+                      and f"{mode}/{p.name}" in results)) for mode in modes},
                   "recommendation": "Keep fishial_preprocess=none. This small screen cannot establish species accuracy or justify a production change."}
         temporary = directory / "report.tmp"
         temporary.write_text(json.dumps(report, indent=2))
@@ -362,6 +405,15 @@ def replay(args, settings) -> int:
             client.close()
         journal.close()
     return 0
+
+
+def parse_modes(value):
+    modes = [mode.strip() for mode in value.split(",")]
+    if len(set(modes)) != len(modes) or any(mode not in PREPROCESS_MODES for mode in modes):
+        raise SystemExit("Preprocess modes must be known and unique")
+    if "none" in modes and modes[0] != "none":
+        raise SystemExit("Paired replay must schedule none before transformed modes")
+    return modes
 
 
 def main(argv=None, parse=None) -> int:
@@ -380,12 +432,17 @@ def main(argv=None, parse=None) -> int:
                         help="Maximum capture window (default 120s), plus one bounded detector pass.")
     parser.add_argument("--compare-preprocess", action="store_true",
                         help="Compare none, CLAHE and white balance on two manifest crops.")
+    parser.add_argument("--preprocess-modes", help="Explicit ordered modes, e.g. none,funie_gan.")
     parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                         help="Override any setting, e.g. --set fishial_quality_floor=0.4")
     args = parser.parse_args(argv)
     if args.replay and (args.max_calls is None or args.max_calls <= 0):
         parser.error("--replay requires an explicit positive --max-calls ceiling")
-    if (args.capture_source or args.compare_preprocess) and not args.replay:
+    if args.preprocess_modes is not None:
+        parse_modes(args.preprocess_modes)
+        if args.compare_preprocess:
+            parser.error("Choose --preprocess-modes or --compare-preprocess")
+    if (args.capture_source or args.compare_preprocess or args.preprocess_modes) and not args.replay:
         parser.error("Capture and comparison require --replay with --max-calls")
     if not 1 <= args.capture_seconds <= 600:
         parser.error("--capture-seconds must be between 1 and 600")

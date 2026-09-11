@@ -37,7 +37,7 @@
 }
 
 .gridline {
-  stroke: var(--hairline);
+  stroke: var(--chart-grid);
   stroke-width: 1;
   stroke-dasharray: 2 3;
 }
@@ -49,12 +49,24 @@
 }
 
 .bar {
-  fill: var(--accent);
+  fill: var(--chart-1);
   transition: fill var(--motion-fast) var(--ease-out);
+  /* Columns grow from the axis on arrival; the transform origin is the base. */
+  transform-origin: center bottom;
+  animation: grow-column var(--motion-slow) var(--ease-out) both;
 }
 
 .barMuted {
-  fill: var(--hairline-strong);
+  fill: var(--chart-4);
+}
+
+@keyframes grow-column {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
 }
 
 .column:hover .bar {
@@ -104,14 +116,32 @@
 
 .rail {
   height: 8px;
-  background: var(--surface-active);
+  border-radius: 2px;
+  background: var(--chart-track);
   overflow: hidden;
 }
 
 .fill {
   height: 100%;
-  background: var(--accent);
+  border-radius: 2px;
+  background: var(--chart-1);
+  /* The bar runs out to its value once, rather than snapping into place. */
+  animation: grow-bar var(--motion-slow) var(--ease-out) both;
+  transform-origin: left center;
   transition: width var(--motion) var(--ease-out);
+}
+
+.row:hover .fill {
+  background: var(--accent-hover);
+}
+
+@keyframes grow-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .rowValue {
@@ -123,10 +153,48 @@
 }
 
 .skeletonPlot {
+  position: relative;
   width: 100%;
   aspect-ratio: 3 / 1;
   border-bottom: 1px solid var(--hairline-strong);
   border-left: 1px solid var(--hairline-strong);
+  overflow: hidden;
+}
+
+/* Ghost columns while the numbers are in flight, so the plot keeps its shape. */
+.skeletonPlot::before {
+  content: '';
+  position: absolute;
+  inset: 20% 0 0;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--surface-active) 0 14px,
+    transparent 14px 26px
+  );
+  mask-image: linear-gradient(180deg, transparent, #000 60%);
+}
+
+.skeletonPlot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 35%) 50%, transparent);
+  animation: skeleton-sweep 1500ms var(--ease-in-out) infinite;
+}
+
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .fill,
+  .skeletonPlot::after {
+    animation: none;
+  }
 }
 
 /* --- Sparkline ------------------------------------------------------------ */
@@ -139,7 +207,7 @@
 
 .sparkLine {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--chart-1);
   stroke-width: 1.5;
   stroke-linejoin: round;
 }

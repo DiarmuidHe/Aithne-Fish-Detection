@@ -39,11 +39,13 @@ include = ["app*"]
 
 [tool.setuptools.package-data]
 app = ["fixtures/*.csv", "viame_pipelines/*.pipe", "templates/*.html", "static/*.css", "static/*.js"]
+"app.vendor.funie_gan" = ["LICENSE", "provenance.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+markers = ["funie_smoke: explicit offline test using pinned local weights and optional PyTorch"]
 
 [tool.ruff]
 line-length = 100

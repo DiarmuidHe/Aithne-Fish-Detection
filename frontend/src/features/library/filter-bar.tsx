@@ -65,14 +65,23 @@ export function FilterBar({
   const speciesOptions = (facets?.species ?? []).map((value) => ({ value, label: value }));
 
   return (
+    /*
+     * A structured toolbar rather than a loose bag of pills: search, then the
+     * facets, then the date window, then the run properties, then sort. The
+     * groups are separated by rules, so the bar reads as one instrument with
+     * sections instead of a dozen controls of equal weight.
+     */
     <div className={styles.filterBar}>
-      <SearchInput
-        label="Search filenames and cameras"
-        placeholder="Filename or camera"
-        value={draft}
-        onChange={setDraft}
-      />
+      <div className={styles.filterGroup} data-grow="">
+        <SearchInput
+          label="Search filenames and cameras"
+          placeholder="Filename or camera"
+          value={draft}
+          onChange={setDraft}
+        />
+      </div>
 
+      <div className={styles.filterGroup}>
       <MultiSelect
         label="Status"
         options={statusOptions}
@@ -106,9 +115,13 @@ export function FilterBar({
         onChange={(value) => dispatch({ type: 'patch', patch: { species: value } })}
         emptyMessage="No species has been recorded on an accepted track yet."
       />
+      </div>
 
-      <DateFilter filters={filters} dispatch={dispatch} />
+      <div className={styles.filterGroup}>
+        <DateFilter filters={filters} dispatch={dispatch} />
+      </div>
 
+      <div className={styles.filterGroup}>
       <Segmented
         label="Has"
         multiple
@@ -120,8 +133,9 @@ export function FilterBar({
       />
 
       <FishCountFilter filters={filters} dispatch={dispatch} />
+      </div>
 
-      <div className={styles.sortGroup}>
+      <div className={styles.filterGroup} data-end="">
         <SingleSelect
           label="Sort"
           options={SORT_VALUES.map((value) => ({ value, label: SORT_LABELS[value] }))}
@@ -157,7 +171,7 @@ function DateFilter({
 }) {
   const presets = DATE_PRESETS.filter((preset) => preset !== 'custom');
   return (
-    <div className={styles.filterBar}>
+    <div className={styles.filterRow}>
       <Segmented
         label="Upload date"
         value={filters.date === 'custom' ? [] : [filters.date]}

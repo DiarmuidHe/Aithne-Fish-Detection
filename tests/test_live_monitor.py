@@ -729,6 +729,8 @@ def fixed_quality(tracker, monkeypatch, short_sides):
 
 def test_species_staging_ranks_frames_and_keeps_a_clean_crop(db_session_factory, test_settings, monkeypatch):
     test_settings.fishial_enabled = True
+    test_settings.fishial_preprocess = "funie_gan"
+    monkeypatch.setattr(LiveTracker, "_preprocess_crop", lambda *args: pytest.fail("Enhanced at staging"))
     frame = np.zeros((300, 700, 3), dtype=np.uint8)
     frame[:] = (30, 90, 150)
     def obs(key, x, confidence=.9):

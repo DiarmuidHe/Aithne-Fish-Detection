@@ -173,16 +173,21 @@ export function BarList({
 
   return (
     <figure className={styles.figure}>
-      <figcaption className={styles.caption}>
-        <span className={styles.captionTitle}>{title}</span>
-        {note ? <span>{note}</span> : null}
-      </figcaption>
+      {/* A list inside a titled panel carries no caption of its own. */}
+      {title || note ? (
+        <figcaption className={styles.caption}>
+          {title ? <span className={styles.captionTitle}>{title}</span> : null}
+          {note ? <span>{note}</span> : null}
+        </figcaption>
+      ) : null}
       {shown.length === 0 ? (
         <p className="note">{emptyMessage}</p>
       ) : (
         <div className={styles.rows}>
-          {shown.map((row) => (
-            <div className={styles.row} key={`${row.label}-${row.value}`}>
+          {/* Two recordings can share a filename and a count, so the position
+              in the ranking is what makes the key unique. */}
+          {shown.map((row, index) => (
+            <div className={styles.row} key={`${row.label}-${index}`}>
               <span className={styles.rowLabel} title={row.label}>
                 {row.to ? (
                   <Link className={styles.rowLink} to={row.to}>

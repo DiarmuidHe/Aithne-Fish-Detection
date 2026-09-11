@@ -26,6 +26,12 @@ from functools import partial
 from sqlalchemy import select, update
 
 from app.db.models import LiveFishTrack, LiveMonitorSession, utc_now
+from app.services.fish_enhancement import (
+    EnhancementError,
+    enhance_crop,
+    failure_metadata,
+    validate_enhancement,
+)
 from app.services.fishial import FishialClient, FishialError
 from app.services.live_monitor import scratch_path
 from app.services.species_quality import consensus_outlook, track_quality
@@ -38,10 +44,11 @@ SELECTED = ("pending", "ready", "submitted")
 
 
 class SpeciesIdentifier:
-    def __init__(self, db, session, settings, client=None):
+    def __init__(self, db, session, settings, client=None, enhancer=None):
         self.db, self.session, self.settings = db, session, settings
         self.client = client
         self._owns_client = client is None
+        self.enhancer = enhancer or enhance_crop
 
     def close(self):
         if self._owns_client and self.client is not None:
@@ -273,6 +280,15 @@ class SpeciesIdentifier:
                 # Only server-written manifest entries resolve paths. No API body or
                 # client-supplied path/URL is accepted here.
                 image = (directory / f"{int(number):012d}.jpg").read_bytes()
+                try:
+                    enhanced = self.enhancer(image, self.settings)
+                    validate_enhancement(enhanced, image, self.settings)
+                except Exception:  # noqa: BLE001 - injected enhancers must also redact errors
+                    raise EnhancementError() from None
+                record["preprocessing"] = enhanced.metadata
+                image = enhanced.image
+                track.fishial_votes_json = json.dumps(audit)
+                self.db.commit()  # Pre-send provenance precedes even authentication/reservation.
                 if self.client is None:
                     self.client = FishialClient(self.settings)
                 expected = staged_frame.get("expected_box")
@@ -285,6 +301,9 @@ class SpeciesIdentifier:
                     prediction = self.client.identify(image, expected)
                 record["raw"] = prediction.raw
                 self._vote(record, prediction)
+            except EnhancementError:
+                record["reason"] = "preprocessing failed"
+                record["preprocessing"] = failure_metadata(image, self.settings)
             except FishialError as exc:
                 record["reason"] = exc.reason
             except Exception:  # noqa: BLE001 - one bad crop/provider result must only abstain
@@ -325,7 +344,8 @@ class SpeciesIdentifier:
                 self._complete(track, audit, "identified", None, directory)
                 return
         exhausted = any(f.get("reason") == "budget exhausted" for f in frames)
-        state = "review_required" if exhausted or any(f.get("succeeded") for f in frames) else "error"
+        state = "review_required" if exhausted or any(
+            f.get("succeeded") or f.get("reason") == "preprocessing failed" for f in frames) else "error"
         # These abstentions are different operational problems and must never
         # collapse into one message: "insufficient clear frames", "below quality
         # floor", "consensus unreachable", "classifier returned no candidates",
