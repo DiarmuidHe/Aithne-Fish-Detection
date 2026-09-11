@@ -2,22 +2,45 @@ from __future__ import annotations
 
 import uuid
 import mimetypes
+from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
 from app.db.database import get_db
 from app.db.models import FishTrack, Video, VideoProcessingStatus
 from app.api.tracks import clip_response
+from app.schemas.filters import (
+    ReviewFilter,
+    ReviewState,
+    ReviewStatusFilter,
+    SortOrder,
+    TrackSort,
+    VideoSort,
+    VideoStatusFilter,
+)
 from app.schemas.job import JobRead
 from app.schemas.track import FishTrackRead, FishTrackSummaryRead, TrackClipRead
-from app.schemas.video import VideoAnnotationRead, VideoRead, VideoSummary
-from app.services.fish_counter import accepted_tracks, is_accepted_track, summarize_tracks
+from app.schemas.video import (
+    VideoAnnotationRead,
+    VideoFacets,
+    VideoListRead,
+    VideoRead,
+    VideoSummary,
+)
+from app.services.fish_counter import accepted_tracks, summarize_tracks
+from app.services.library import (
+    aggregate_videos,
+    candidate_query,
+    matches_aggregate_filters,
+    sort_videos,
+)
+from app.services.reporting import DEFAULT_BORDERLINE_BAND, track_summary_row
 from app.services.track_clip import (
     TrackClipError,
     existing_clip,
@@ -48,14 +71,113 @@ async def create_video(
     return await register_uploaded_video(db=db, upload=file, settings=settings, camera_id=camera_id)
 
 
-@router.get("", response_model=list[VideoRead])
-def list_videos(db: Session = Depends(get_db)) -> list[Video]:
-    return list(
+@router.get("", response_model=list[VideoListRead])
+def list_videos(
+    response: Response,
+    q: str | None = Query(None, max_length=256,
+                          description="Substring of the filename or camera, case-insensitive"),
+    status: list[VideoStatusFilter] | None = Query(None),
+    camera_id: list[str] | None = Query(None, description='"__none__" selects videos with no camera'),
+    review: list[ReviewFilter] | None = Query(None),
+    review_status: list[ReviewStatusFilter] | None = Query(None),
+    annotated: bool | None = Query(None),
+    has_clips: bool | None = Query(None),
+    species: list[str] | None = Query(None),
+    created_after: datetime | None = Query(None),
+    created_before: datetime | None = Query(None),
+    min_fish: int | None = Query(None, ge=0),
+    max_fish: int | None = Query(None, ge=0),
+    min_duration: float | None = Query(None, ge=0),
+    max_duration: float | None = Query(None, ge=0),
+    band: float = Query(DEFAULT_BORDERLINE_BAND, ge=0, le=1,
+                        description="Half-width of the borderline band around the run threshold"),
+    sort: VideoSort = Query(VideoSort.CREATED_AT),
+    order: SortOrder = Query(SortOrder.DESC),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> list[VideoListRead]:
+    """The library list. Still a bare JSON array; the totals ride in headers."""
+
+    candidates = list(
         db.scalars(
-            select(Video)
-            .options(selectinload(Video.jobs))
-            .order_by(Video.created_at.desc())
+            candidate_query(
+                q=q,
+                status=[value.value for value in status] if status else None,
+                camera_id=camera_id,
+                annotated=annotated,
+                created_after=created_after,
+                created_before=created_before,
+                min_duration=min_duration,
+                max_duration=max_duration,
+            ).options(selectinload(Video.jobs))
         ).all()
+    )
+    aggregates = aggregate_videos(db, candidates, settings, band)
+    review_values = [value.value for value in review] if review else None
+    rows = [
+        (video, aggregates[video.id])
+        for video in candidates
+        if matches_aggregate_filters(
+            aggregates[video.id],
+            review=review_values,
+            review_status=[value.value for value in review_status] if review_status else None,
+            species=species,
+            has_clips=has_clips,
+            min_fish=min_fish,
+            max_fish=max_fish,
+        )
+    ]
+    rows = sort_videos(rows, sort.value, order.value)
+    response.headers["X-Total-Count"] = str(db.scalar(select(func.count(Video.id))) or 0)
+    response.headers["X-Filtered-Count"] = str(len(rows))
+    return [_video_list_row(video, aggregate) for video, aggregate in rows[offset:offset + limit]]
+
+
+@router.get("/facets", response_model=VideoFacets)
+def get_video_facets(
+    band: float = Query(DEFAULT_BORDERLINE_BAND, ge=0, le=1),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> VideoFacets:
+    """Filter menu contents and their counts, so the client never loads the library to build a menu."""
+
+    videos = list(db.scalars(select(Video).options(selectinload(Video.jobs))).all())
+    # Clip counts are a directory listing per video and no facet needs them.
+    aggregates = aggregate_videos(db, videos, settings, band, include_clips=False)
+    status_counts: dict[str, int] = {}
+    review_counts: dict[str, int] = {}
+    cameras, species = set(), set()
+    for video in videos:
+        aggregate = aggregates[video.id]
+        status_counts[video.processing_status] = status_counts.get(video.processing_status, 0) + 1
+        review_counts[aggregate.review_status] = review_counts.get(aggregate.review_status, 0) + 1
+        if video.camera_id:
+            cameras.add(video.camera_id)
+        species.update(aggregate.species)
+    return VideoFacets(
+        cameras=sorted(cameras),
+        species=sorted(species),
+        status=status_counts,
+        review_status=review_counts,
+        total=len(videos),
+    )
+
+
+def _video_list_row(video: Video, aggregate) -> VideoListRead:
+    return VideoListRead(
+        **VideoRead.model_validate(video).model_dump(),
+        track_count=aggregate.track_count,
+        accepted_track_count=aggregate.accepted_track_count,
+        detection_count=aggregate.detection_count,
+        unreviewed_count=aggregate.unreviewed_count,
+        flagged_count=aggregate.flagged_count,
+        disputed_count=aggregate.disputed_count,
+        review_status=aggregate.review_status,
+        has_annotation=video.annotated_at is not None,
+        clip_count=aggregate.clip_count,
+        species=aggregate.species,
     )
 
 
@@ -196,7 +318,22 @@ def get_video_tracks(
 @router.get("/{video_id}/track-summaries", response_model=list[FishTrackSummaryRead])
 def get_video_track_summaries(
     video_id: uuid.UUID,
-    accepted_only: bool = Query(True),
+    accepted_only: bool = Query(
+        True,
+        description="Superseded by `review`, and applied in addition to it. "
+                    "Pass false when filtering by review state.",
+    ),
+    review_state: list[ReviewState] | None = Query(None),
+    review: list[ReviewFilter] | None = Query(None),
+    species: list[str] | None = Query(None),
+    min_confidence: float | None = Query(None, ge=0, le=1),
+    max_confidence: float | None = Query(None, ge=0, le=1),
+    min_detections: int | None = Query(None, ge=0),
+    time_from: float | None = Query(None, ge=0),
+    time_to: float | None = Query(None, ge=0),
+    band: float = Query(DEFAULT_BORDERLINE_BAND, ge=0, le=1),
+    sort: TrackSort = Query(TrackSort.FIRST_FRAME),
+    order: SortOrder = Query(SortOrder.ASC),
     db: Session = Depends(get_db),
 ) -> list[dict]:
     video = _get_video_or_404(db, video_id)
@@ -207,33 +344,64 @@ def get_video_track_summaries(
             .order_by(FishTrack.first_frame, FishTrack.viame_track_id)
         ).all()
     )
+    jobs = {job.id: job for job in video.jobs}
+    wanted_states = {value.value for value in review_state} if review_state else None
+    wanted_review = {value.value for value in review} if review else None
     rows = []
     for track in tracks:
-        accepted = is_accepted_track(track, video.confidence_threshold)
-        if accepted_only and not accepted:
+        row = track_summary_row(track, video, jobs, band)
+        if accepted_only and not row["accepted"]:
             continue
-        rows.append(
-            {
-                "id": track.id,
-                "video_id": track.video_id,
-                "processing_job_id": track.processing_job_id,
-                "review_state": track.review_state,
-                "reviewed_at": track.reviewed_at,
-                "machine_accepted": track.max_confidence >= video.confidence_threshold,
-                "viame_track_id": track.viame_track_id,
-                "first_frame": track.first_frame,
-                "last_frame": track.last_frame,
-                "first_timestamp_seconds": track.first_timestamp_seconds,
-                "last_timestamp_seconds": track.last_timestamp_seconds,
-                "detection_count": track.detection_count,
-                "mean_confidence": track.mean_confidence,
-                "max_confidence": track.max_confidence,
-                "species": track.species,
-                "species_confidence": track.species_confidence,
-                "accepted": accepted,
-            }
-        )
-    return rows
+        if wanted_states and track.review_state not in wanted_states:
+            continue
+        if wanted_review and not wanted_review.intersection(row["review_categories"]):
+            continue
+        if species and track.species not in species:
+            continue
+        if min_confidence is not None and track.max_confidence < min_confidence:
+            continue
+        if max_confidence is not None and track.max_confidence > max_confidence:
+            continue
+        if min_detections is not None and track.detection_count < min_detections:
+            continue
+        if not _within_window(track, time_from, time_to):
+            continue
+        rows.append(row)
+    return _sort_track_rows(rows, sort.value, order.value)
+
+
+def _within_window(track: FishTrack, time_from: float | None, time_to: float | None) -> bool:
+    """A track is in the window when its observed span overlaps it."""
+
+    if time_from is None and time_to is None:
+        return True
+    first, last = track.first_timestamp_seconds, track.last_timestamp_seconds
+    if first is None or last is None:
+        # An untimed track cannot be shown to fall inside a time window.
+        return False
+    if time_to is not None and first > time_to:
+        return False
+    return not (time_from is not None and last < time_from)
+
+
+def _track_sort_key(name: str, row: dict):
+    if name == "duration":
+        first, last = row["first_timestamp_seconds"], row["last_timestamp_seconds"]
+        missing = first is None or last is None
+        return (missing, 0.0 if missing else max(0.0, last - first))
+    if name == "species":
+        return (row["species"] is None, (row["species"] or "").lower())
+    return (0, row[name])
+
+
+def _sort_track_rows(rows: list[dict], sort: str, order: str) -> list[dict]:
+    descending = order == "desc"
+    # Frame order breaks ties so equal keys keep a stable, meaningful order.
+    ordered = sorted(rows, key=lambda row: (row["first_frame"], row["viame_track_id"]),
+                     reverse=descending)
+    if sort == "first_frame":
+        return ordered
+    return sorted(ordered, key=lambda row: _track_sort_key(sort, row), reverse=descending)
 
 
 @router.get("/{video_id}/summary", response_model=VideoSummary)

@@ -13,6 +13,15 @@ class TrackReviewUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class TrackBulkReviewUpdate(BaseModel):
+    """One decision applied to many tracks. The queue needs "accept all visible"."""
+
+    track_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    review_state: Literal["unreviewed", "reviewed", "accepted", "rejected", "needs-review"]
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class FishDetectionRead(BaseModel):
     id: uuid.UUID
     frame_number: int
@@ -67,6 +76,10 @@ class FishTrackSummaryRead(BaseModel):
     species: str | None
     species_confidence: float | None
     accepted: bool
+    # The threshold this track's own run used, and the review words that follow
+    # from it. Sent so the client never has to reclassify a track itself.
+    run_threshold: float
+    review_categories: list[str]
 
     model_config = ConfigDict(from_attributes=True)
 
