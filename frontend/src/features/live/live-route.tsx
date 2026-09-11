@@ -72,6 +72,9 @@ export function LiveRoute() {
 
   const session = latest.data?.session ?? null;
   const isRunning = session !== null && OPEN_STATUSES.has(session.status);
+  // The worker finishes the segment it is mid-way through before it winds down,
+  // so "stopping" can last a while and has to look like progress, not a dead control.
+  const isStopping = session?.status === 'stopping';
   // Live is the one screen that genuinely needs a short interval, and only
   // while a session is open and the operator is looking at it.
   const interval = visible ? (isRunning ? 2_000 : 10_000) : false;
@@ -216,11 +219,14 @@ export function LiveRoute() {
             Start monitoring
           </Button>
           <Button
-            disabled={!isRunning || session?.status === 'stopping' || stop.isPending}
+            // A stop request is already in flight, so a second one is a no-op —
+            // unless the worker has gone quiet, in which case retrying is the
+            // only thing left to try.
+            disabled={!isRunning || stop.isPending || (isStopping && !session?.worker_stale)}
             onClick={() => stop.mutate()}
           >
             <StopIcon />
-            Stop
+            {isStopping ? 'Stopping…' : 'Stop'}
           </Button>
 
           {isRunning ? (
@@ -255,6 +261,9 @@ export function LiveRoute() {
               <span>·</span>
               <span className={styles.lag}>{session.dropped_segments} skipped segments</span>
               {session.status === 'queued' ? <span>· Waiting for the live worker</span> : null}
+              {isStopping ? (
+                <span>· Finishing the segment it is already analyzing, then stopping</span>
+              ) : null}
             </>
           )}
         </p>
