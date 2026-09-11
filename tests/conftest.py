@@ -23,6 +23,7 @@ def test_settings(tmp_path: Path) -> Settings:
         job_root=tmp_path / "jobs",
         output_root=tmp_path / "outputs",
         live_scratch_root=tmp_path / "scratch",
+        frontend_dist=tmp_path / "frontend-dist",
         viame_mock=True,
         fishial_enabled=False,
         fishial_client_id=None,

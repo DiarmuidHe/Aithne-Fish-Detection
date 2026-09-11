@@ -68,6 +68,21 @@ def main():
         assert client.get(f"/videos/{ids[0]}/annotated-video").status_code == 200
         assert client.get("/exports/batch.csv").status_code == 200
         assert len(client.get("/analytics/videos").json()) == 2
+        listed = client.get("/videos", params={"status": "completed", "sort": "accepted_fish"})
+        assert listed.headers["X-Total-Count"] == "2" and listed.headers["X-Filtered-Count"] == "2"
+        assert all(row["review_status"] == "awaiting" for row in listed.json())
+        facets = client.get("/videos/facets").json()
+        assert facets["status"]["completed"] == 2 and facets["review_status"]["awaiting"] == 2
+        track_ids = [t["id"] for t in client.get(
+            f"/videos/{ids[0]}/track-summaries", params={"accepted_only": False}).json()]
+        bulk = client.post("/tracks/review",
+                           json={"track_ids": track_ids, "review_state": "needs-review"})
+        assert bulk.status_code == 200 and len(bulk.json()) == len(track_ids)
+        assert [row["id"] for row in client.get("/videos", params={"review": "flagged"}).json()] == [ids[0]]
+        # Leave the data as the run found it, so --serve starts from a clean queue.
+        assert client.post("/tracks/review",
+                           json={"track_ids": track_ids, "review_state": "unreviewed"}).status_code == 200
+        assert client.get("/", follow_redirects=False).status_code == 200
         record_worker_heartbeat("validation", "mock", None)
     print(f"Mock batch processing, annotations, exports, analytics and migrations passed. Data: {validation}", flush=True)
     if args.serve:

@@ -1,0 +1,138 @@
+.system {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.systemMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 380px;
+}
+
+.systemLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.systemMode {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  font-weight: var(--weight-medium);
+}
+
+.queue {
+  display: flex;
+  gap: var(--space-8);
+  margin: 0;
+}
+
+.queueFigure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.queueLabel {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.queueValue {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  line-height: var(--leading-xl);
+}
+
+.queueValue[data-tone='failed'] {
+  color: var(--status-failed);
+}
+
+/* --- Review debt ---------------------------------------------------------- */
+
+.debt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-10);
+}
+
+.debtFigure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  padding-bottom: 2px;
+}
+
+.debtFigure:hover {
+  border-bottom-color: var(--accent);
+}
+
+.debtValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-2xl);
+  letter-spacing: -0.02em;
+}
+
+.debtLabel {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+/* --- Recent --------------------------------------------------------------- */
+
+.recent {
+  border-top: 1px solid var(--hairline);
+}
+
+.recentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--text-sm);
+}
+
+.recentLink {
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  font-weight: var(--weight-medium);
+}
+
+.recentLink:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-8);
+}
+
+@media (max-width: 700px) {
+  .recentRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--space-1);
+  }
+
+  .queue {
+    gap: var(--space-6);
+  }
+}

@@ -1,0 +1,136 @@
+/* Tables are page regions, not floating cards: hairlines, square corners, dense rows. */
+
+.scroll {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.viewport {
+  overflow: auto;
+  max-height: 100%;
+  overscroll-behavior: contain;
+}
+
+.scrollbar {
+  display: flex;
+  justify-content: center;
+  width: 8px;
+  padding: 2px;
+  background: transparent;
+  opacity: 0;
+  transition: opacity var(--motion) var(--ease-out);
+}
+
+.scrollbar[data-orientation='horizontal'] {
+  width: auto;
+  height: 8px;
+}
+
+.scroll:hover .scrollbar,
+.scrollbar[data-scrolling] {
+  opacity: 1;
+}
+
+.thumb {
+  width: 100%;
+  border-radius: 3px;
+  background: var(--hairline-strong);
+}
+
+.table {
+  width: 100%;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 30px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--hairline-strong);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table tbody td {
+  height: var(--row-height);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+
+.table tbody tr:hover td {
+  background: var(--surface-hover);
+}
+
+.table tbody tr[data-selected] td {
+  background: var(--accent-quiet);
+}
+
+/* The first column keeps its place when the table scrolls sideways. */
+.stickyFirst thead th:first-child,
+.stickyFirst tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--hairline);
+}
+
+.stickyFirst thead th:first-child {
+  z-index: 3;
+  background: var(--surface-sunken);
+}
+
+.stickyFirst tbody tr:hover td:first-child {
+  background: var(--surface-hover);
+}
+
+.stickyFirst tbody tr[data-selected] td:first-child {
+  background: var(--accent-quiet);
+}
+
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sortButton:hover {
+  color: var(--ink);
+}
+
+.sortButton[data-active] {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+
+.sortGlyph {
+  color: var(--accent);
+}
+
+/* Rows outside the virtual window still take up their height. */
+.spacer td {
+  padding: 0;
+  border: 0;
+}

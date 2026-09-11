@@ -1,0 +1,204 @@
+/*
+ * Fish Monitor design tokens.
+ *
+ * The screen is an instrument console, not a landing page: ink on paper, one
+ * accent for interaction, a separate reserved set for status, hairlines instead
+ * of shadows, and shadow reserved for things that genuinely float.
+ *
+ * Rules encoded here, so they cannot drift:
+ *  - one accent (the existing teal), used only for interactive affordance and
+ *    selection; never for decoration and never as a gradient;
+ *  - status colours are a closed set, used only to carry status, and always
+ *    paired with a word so colour is never the only signal;
+ *  - radii: 4px controls, 8px popups, 0 for page regions and tables;
+ *  - elevation belongs to portals only.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces: one paper, one card, one sunken well. */
+  --surface: #fbfaf8;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f2f0ec;
+  --surface-hover: #f4f2ee;
+  --surface-active: #ebe8e2;
+
+  /* Ink. One near-black, two steps down for support text. */
+  --ink: #16191a;
+  --ink-muted: #565c5e;
+  /* Darkened to clear 4.5:1 against --surface-sunken at 12px. */
+  --ink-faint: #63696b;
+  --ink-inverse: #ffffff;
+
+  /* Hairlines do the separating work that shadows used to. */
+  --hairline: #dedbd5;
+  --hairline-strong: #c3bfb7;
+
+  /* The one accent. Kept from the previous design's --sea, minus the gradient. */
+  --accent: #0b5960;
+  --accent-hover: #094a50;
+  --accent-active: #073c41;
+  --accent-quiet: #e2eded;
+  --accent-quiet-hover: #d3e4e4;
+  --accent-ink: #ffffff;
+  --focus-ring: #0b5960;
+
+  /* Reserved status set. Nothing else may use these. */
+  --status-uploaded: #5f6668;
+  --status-uploaded-bg: #eeece8;
+  --status-queued: #7a5c12;
+  --status-queued-bg: #f6efdc;
+  --status-processing: #17566f;
+  --status-processing-bg: #e0edf3;
+  --status-completed: #2a6340;
+  --status-completed-bg: #e2eee6;
+  --status-failed: #96271f;
+  --status-failed-bg: #f6e3e1;
+  --status-flagged: #8a4212;
+  --status-flagged-bg: #f7e8dc;
+
+  /* Type: a text face and a monospace face, both self-hosted by the OS. */
+  --font-text:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', Menlo,
+    Consolas, monospace;
+
+  /* Six steps, each with its own line height rather than 1.5 throughout. */
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 13px;
+  --leading-sm: 18px;
+  --text-base: 15px;
+  --leading-base: 22px;
+  --text-lg: 18px;
+  --leading-lg: 24px;
+  --text-xl: 24px;
+  --leading-xl: 30px;
+  --text-2xl: 32px;
+  --leading-2xl: 38px;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+
+  /* An 8px scale used with rhythm: related at 8, groups at 24, sections at 48. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-control: 4px;
+  --radius-popup: 8px;
+  --radius-region: 0;
+
+  --row-height: 34px;
+  --control-height: 32px;
+  --rail-width: 256px;
+  --content-max: 1600px;
+
+  --motion-fast: 120ms;
+  --motion: 160ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* The only elevation in the system. Portals only. */
+  --shadow-popup: 0 6px 16px rgb(22 25 26 / 12%), 0 1px 3px rgb(22 25 26 / 10%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+
+    color-scheme: dark;
+
+    --surface: #141718;
+    --surface-raised: #1b1f20;
+    --surface-sunken: #0e1011;
+    --surface-hover: #212527;
+    --surface-active: #2a2f31;
+
+    --ink: #e9e7e3;
+    --ink-muted: #a2a8aa;
+    --ink-faint: #868d8f;
+    --ink-inverse: #0e1011;
+
+    --hairline: #2b2f31;
+    --hairline-strong: #3f4548;
+
+    --accent: #6bc0c7;
+    --accent-hover: #83cdd3;
+    --accent-active: #9adade;
+    --accent-quiet: #17292b;
+    --accent-quiet-hover: #1e3639;
+    --accent-ink: #0b1516;
+    --focus-ring: #6bc0c7;
+
+    --status-uploaded: #a0a7a9;
+    --status-uploaded-bg: #232729;
+    --status-queued: #d8b658;
+    --status-queued-bg: #2d2718;
+    --status-processing: #6fb4d4;
+    --status-processing-bg: #182930;
+    --status-completed: #74c091;
+    --status-completed-bg: #182a20;
+    --status-failed: #e08a83;
+    --status-failed-bg: #2e1c1a;
+    --status-flagged: #dd9c62;
+    --status-flagged-bg: #2e2118;
+
+    --shadow-popup: 0 6px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 40%);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface: #141718;
+  --surface-raised: #1b1f20;
+  --surface-sunken: #0e1011;
+  --surface-hover: #212527;
+  --surface-active: #2a2f31;
+
+  --ink: #e9e7e3;
+  --ink-muted: #a2a8aa;
+  --ink-faint: #868d8f;
+  --ink-inverse: #0e1011;
+
+  --hairline: #2b2f31;
+  --hairline-strong: #3f4548;
+
+  --accent: #6bc0c7;
+  --accent-hover: #83cdd3;
+  --accent-active: #9adade;
+  --accent-quiet: #17292b;
+  --accent-quiet-hover: #1e3639;
+  --accent-ink: #0b1516;
+  --focus-ring: #6bc0c7;
+
+  --status-uploaded: #a0a7a9;
+  --status-uploaded-bg: #232729;
+  --status-queued: #d8b658;
+  --status-queued-bg: #2d2718;
+  --status-processing: #6fb4d4;
+  --status-processing-bg: #182930;
+  --status-completed: #74c091;
+  --status-completed-bg: #182a20;
+  --status-failed: #e08a83;
+  --status-failed-bg: #2e1c1a;
+  --status-flagged: #dd9c62;
+  --status-flagged-bg: #2e2118;
+
+  --shadow-popup: 0 6px 16px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 40%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion: 1ms;
+  }
+}

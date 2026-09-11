@@ -1,0 +1,306 @@
+/* Shared shell for the things an operator types into or opens. 32px, 4px radius. */
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.control:hover {
+  border-color: var(--ink-faint);
+}
+
+.control[data-popup-open],
+.control:focus-within {
+  border-color: var(--accent);
+}
+
+.trigger {
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.triggerLabel {
+  color: var(--ink-muted);
+}
+
+.triggerValue {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-quiet);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.triggerIcon {
+  color: var(--ink-faint);
+  flex: none;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  padding: 0;
+  color: var(--ink);
+}
+
+.input::placeholder {
+  color: var(--ink-faint);
+}
+
+.searchField {
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 360px;
+}
+
+.fieldRoot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.fieldLabel {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+}
+
+.fieldDescription {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.fieldError {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--status-failed);
+}
+
+.fieldRoot [data-invalid] .control,
+.control[data-invalid] {
+  border-color: var(--status-failed);
+}
+
+/* --- Number field --------------------------------------------------------- */
+
+.numberGroup {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--control-height);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.numberGroup:focus-within {
+  border-color: var(--accent);
+}
+
+.numberInput {
+  width: 5ch;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  padding: 0 var(--space-2);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+}
+
+.numberStep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+  cursor: default;
+}
+
+.numberStep:first-of-type {
+  border-left: 0;
+  border-right: 1px solid var(--hairline);
+}
+
+.numberStep:hover {
+  background: var(--surface-active);
+  color: var(--ink);
+}
+
+/* --- Checkbox ------------------------------------------------------------- */
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--accent-ink);
+  cursor: default;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.checkbox[data-checked],
+.checkbox[data-indeterminate] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkboxIndicator {
+  display: inline-flex;
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  cursor: default;
+}
+
+/* --- Switch --------------------------------------------------------------- */
+
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+  cursor: default;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.switch[data-checked] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switchThumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.switch[data-checked] .switchThumb {
+  transform: translateX(14px);
+}
+
+/* --- Slider --------------------------------------------------------------- */
+
+.sliderRoot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 180px;
+}
+
+.sliderHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.sliderValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.sliderControl {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  width: 100%;
+}
+
+.sliderTrack {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-active);
+}
+
+.sliderIndicator {
+  position: absolute;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.sliderThumb {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface-raised);
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

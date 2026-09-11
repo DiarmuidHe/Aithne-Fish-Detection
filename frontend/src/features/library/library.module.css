@@ -1,0 +1,297 @@
+/* Two panes: a resizable list rail and a detail pane. */
+
+.layout {
+  display: grid;
+  grid-template-columns: var(--rail, 420px) 1px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.listPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--hairline);
+}
+
+.resizer {
+  width: 1px;
+  cursor: col-resize;
+  background: var(--hairline);
+  position: relative;
+}
+
+.resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.resizer:hover,
+.resizer[data-dragging] {
+  background: var(--accent);
+}
+
+.detailPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-raised);
+}
+
+/* --- Header and filters --------------------------------------------------- */
+
+.listHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.headerTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.headerTitle {
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-strong);
+}
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sortGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.resultLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.resultCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.savedViews {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- The list ------------------------------------------------------------- */
+
+.list {
+  flex: 1;
+  min-height: 0;
+}
+
+.rowWrap {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.rowWrap:hover {
+  background: var(--surface-hover);
+}
+
+.rowWrap[data-selected] {
+  background: var(--accent-quiet);
+}
+
+.rowWrap[data-current] {
+  background: var(--accent-quiet);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.rowCheck {
+  padding-top: 3px;
+}
+
+.rowLink {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+
+.rowStat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowFlag {
+  color: var(--status-flagged);
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-top: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.rowWrap:hover .rowActions,
+.rowWrap:focus-within .rowActions {
+  opacity: 1;
+}
+
+/* --- Bulk bar ------------------------------------------------------------- */
+
+.bulkBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--hairline-strong);
+  background: var(--surface-raised);
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.bulkCount {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+}
+
+.bulkHidden {
+  color: var(--ink-muted);
+  font-weight: var(--weight-normal);
+}
+
+.bulkSpacer {
+  margin-left: auto;
+}
+
+.bulkProgress {
+  flex-basis: 100%;
+}
+
+/* --- Paging --------------------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  flex: none;
+}
+
+.pagerRange {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Skeleton ------------------------------------------------------------- */
+
+.skeletonRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .resizer {
+    display: none;
+  }
+
+  .listPane {
+    border-right: 0;
+  }
+
+  .layout[data-detail-open] .listPane {
+    display: none;
+  }
+
+  .layout:not([data-detail-open]) .detailPane {
+    display: none;
+  }
+
+  .sortGroup {
+    margin-left: 0;
+  }
+}

@@ -1,0 +1,95 @@
+.group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.item:first-child {
+  border-left: 0;
+}
+
+.item:hover:not([data-disabled]) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.item[data-pressed] {
+  background: var(--accent-quiet);
+  color: var(--accent);
+}
+
+.item[data-pressed]:hover {
+  background: var(--accent-quiet-hover);
+}
+
+.item[data-disabled] {
+  color: var(--ink-faint);
+}
+
+.small .item {
+  height: 24px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+}
+
+/* --- Filter chips --------------------------------------------------------- */
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--surface-active);
+}
+
+.chipRemove {
+  display: inline-flex;
+  color: var(--ink-faint);
+}
+
+.chip:hover .chipRemove {
+  color: var(--ink);
+}

@@ -1,0 +1,218 @@
+/* Status, progress, empty states, skeletons, separators, toolbars. */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  /* Colour is never the only carrier: the word is always present. */
+  color: var(--status-uploaded);
+  background: var(--status-uploaded-bg);
+}
+
+.status[data-status='queued'] {
+  color: var(--status-queued);
+  background: var(--status-queued-bg);
+}
+
+.status[data-status='processing'] {
+  color: var(--status-processing);
+  background: var(--status-processing-bg);
+}
+
+.status[data-status='completed'] {
+  color: var(--status-completed);
+  background: var(--status-completed-bg);
+}
+
+.status[data-status='failed'] {
+  color: var(--status-failed);
+  background: var(--status-failed-bg);
+}
+
+.status[data-status='flagged'],
+.status[data-status='awaiting'] {
+  color: var(--status-flagged);
+  background: var(--status-flagged-bg);
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* --- Progress and meter --------------------------------------------------- */
+
+.progressRoot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 160px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.progressValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.progressTrack {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-active);
+  overflow: hidden;
+}
+
+.progressIndicator {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--motion) var(--ease-out);
+}
+
+.meterRoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 90px;
+}
+
+.meterTrack {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  min-width: 40px;
+  border-radius: 2px;
+  background: var(--surface-active);
+  overflow: hidden;
+}
+
+.meterIndicator {
+  height: 100%;
+  background: var(--ink-faint);
+}
+
+.meterAccepted .meterIndicator {
+  background: var(--accent);
+}
+
+.meterValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  width: 5ch;
+  text-align: right;
+}
+
+/* --- Skeletons ------------------------------------------------------------ */
+
+.skeleton {
+  background: var(--surface-active);
+  border-radius: 3px;
+  animation: pulse 1400ms ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* --- Empty and error states ----------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-6);
+  max-width: 62ch;
+}
+
+.emptyTitle {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  font-weight: var(--weight-strong);
+}
+
+.emptyBody {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--ink-muted);
+}
+
+.panelError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--status-failed);
+  border-radius: var(--radius-control);
+  background: var(--status-failed-bg);
+  color: var(--ink);
+}
+
+.panelErrorTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-strong);
+  color: var(--status-failed);
+}
+
+/* --- Separator and toolbar ------------------------------------------------ */
+
+.separator {
+  background: var(--hairline);
+  border: 0;
+  flex: none;
+}
+
+.separator[data-orientation='horizontal'] {
+  height: 1px;
+  width: 100%;
+}
+
+.separator[data-orientation='vertical'] {
+  width: 1px;
+  align-self: stretch;
+  min-height: 18px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

@@ -1,8 +1,9 @@
 # Fish Monitor
 
 An operator-friendly underwater fish detection and tracking application built with FastAPI,
-PostgreSQL, and VIAME. The FastAPI service includes a responsive web dashboard, so no Node.js
-server or frontend build step is required.
+PostgreSQL, and VIAME. The FastAPI service serves the operator dashboard as a pre-built static
+bundle, so there is no Node.js server at runtime. Building that bundle is a one-off frontend build
+step (`npm run build` in `frontend/`), which `docker compose` runs for you.
 
 The system treats VIAME as an isolated worker. The API stores uploaded or registered videos,
 queues database-backed processing jobs, and a separate worker runs VIAME or mock mode, parses VIAME
@@ -20,7 +21,8 @@ underwater video
 
 ## What Is Implemented
 
-- Web dashboard at `http://localhost:8000` for upload, processing, results, and annotation.
+- Operator dashboard at `http://localhost:8000`: an Overview, a filterable video Library with
+  a detail pane, a cross-video Review queue, and Live monitoring.
 - `POST /videos` upload for MP4/MOV/AVI/MKV using UUID storage paths and SHA-256 recording.
 - `POST /videos/{video_id}/process` queueing without blocking the HTTP request.
 - Database-backed worker with `queued -> processing -> completed/failed` states and heartbeats.
@@ -204,8 +206,9 @@ bounded timeline (1–100 bins), ten confidence bins, and ten duration bins. Dur
 first observation time; a one-observation track has zero duration. Bins include their lower bound
 and exclude their upper bound, except the final bin includes both. Missing timestamps/durations are
 reported separately rather than inferred. Time windows with zero counts contain no accepted
-observations; they do not imply that the detector examined every frame. Charts use native HTML/CSS
-served by FastAPI, with visible numeric labels and responsive layouts; no Node server or CDN.
+observations; they do not imply that the detector examined every frame. Charts are hand-rolled SVG
+in the dashboard bundle, with text summaries beside them and responsive layouts; no charting
+library, no Node server at runtime, and no CDN.
 
 ## Local Development
 
@@ -216,6 +219,30 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
+
+Build the dashboard once, so FastAPI has something to serve:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+`npm run build` writes `frontend/dist`, which FastAPI mounts at `/static/app` and serves for every
+client route. Without it the API still works and `/docs` is unaffected, but the dashboard shows a
+short page saying the build step was skipped. Set `FRONTEND_DIST` to serve the bundle from
+elsewhere.
+
+While changing the dashboard, run the Vite dev server instead of rebuilding:
+
+```bash
+cd frontend
+npm run dev
+```
+
+It serves `http://localhost:5173` with hot reloading and proxies `/videos`, `/jobs`, `/tracks`,
+`/system`, `/batch`, `/exports`, `/analytics` and `/live` to `http://localhost:8000`, so run
+`uvicorn` alongside it. Frontend tests are `npm test` (Vitest); the backend suite is unaffected.
 
 Copy and edit configuration:
 
@@ -251,8 +278,11 @@ VIAME_MOCK=true python -m app.workers.processing_worker
 Run tests on Windows with the project environment used for this repository:
 
 ```bash
-.venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe -m pytest --basetemp=C:/tmp/pt
 ```
+
+A bare `pytest` can fail on this platform when the default temporary directory path is long; pass a
+short `--basetemp` as above.
 
 The tests use SQLite and mock VIAME output, so they do not require PostgreSQL, VIAME, or an NVIDIA GPU.
 

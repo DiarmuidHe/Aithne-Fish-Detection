@@ -1,0 +1,145 @@
+/* Charts are wide and short — about 3:1 — not square cards in a grid. */
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.captionTitle {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-strong);
+  color: var(--ink);
+}
+
+.plot {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.axis {
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.gridline {
+  stroke: var(--hairline);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.tick {
+  fill: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.bar {
+  fill: var(--accent);
+  transition: fill var(--motion-fast) var(--ease-out);
+}
+
+.barMuted {
+  fill: var(--hairline-strong);
+}
+
+.column:hover .bar {
+  fill: var(--accent-hover);
+}
+
+.hit {
+  fill: transparent;
+  cursor: default;
+}
+
+/* --- Horizontal bar list -------------------------------------------------- */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row {
+  display: grid;
+  /* The label is the point of a ranked list, so it gets real room. */
+  grid-template-columns: minmax(110px, 1.6fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  min-height: 22px;
+}
+
+.rowLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.rowLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.rowLink:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.rail {
+  height: 8px;
+  background: var(--surface-active);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--motion) var(--ease-out);
+}
+
+.rowValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  min-width: 5ch;
+  text-align: right;
+}
+
+.skeletonPlot {
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  border-bottom: 1px solid var(--hairline-strong);
+  border-left: 1px solid var(--hairline-strong);
+}
+
+/* --- Sparkline ------------------------------------------------------------ */
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}

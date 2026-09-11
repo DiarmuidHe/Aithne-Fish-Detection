@@ -627,7 +627,8 @@ def test_stream_closes_on_disconnect(db_session_factory, test_settings):
 
 
 def test_dashboard_contains_live_panel(client):
-    html = client.get("/").text
+    # The legacy dashboard, kept at /legacy until parity is signed off.
+    html = client.get("/legacy").text
     assert 'id="live-panel"' in html and 'id="live-gallery"' in html
     # live.js populates the selector and reads the hint by these ids.
     assert 'id="live-source"' in html and 'for="live-source"' in html and 'id="live-source-hint"' in html

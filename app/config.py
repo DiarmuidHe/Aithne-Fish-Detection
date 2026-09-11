@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://fish:fish@localhost:5432/fish_monitor"
     auto_create_tables: bool = False
 
+    # The built single-page app. FastAPI serves it; there is no Node at runtime.
+    frontend_dist: Path = Path("frontend/dist")
+
     upload_root: Path = Path("data/uploads")
     job_root: Path = Path("data/jobs")
     output_root: Path = Path("data/outputs")
