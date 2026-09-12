@@ -2,6 +2,15 @@ services:
   live-worker:
     extends:
       service: worker
+    command: ["bash", "/app/scripts/live_worker_viame.sh"]
+    environment:
+      FISHIAL_PREPROCESS: "${FISHIAL_PREPROCESS:-none}"
+      FISHIAL_FUNIE_MODEL_PATH: "${FISHIAL_FUNIE_MODEL_PATH:-/models/funie_generator.pth}"
+      FISHIAL_FUNIE_MODEL_SHA256: "${FISHIAL_FUNIE_MODEL_SHA256:-e4fcb50e03868f1683c244b1c125def30df335ec43d9bb001b8700c03b8f2bd6}"
+      FISHIAL_FUNIE_DEVICE: "${FISHIAL_FUNIE_DEVICE:-auto}"
+      FISHIAL_FUNIE_JPEG_QUALITY: "${FISHIAL_FUNIE_JPEG_QUALITY:-95}"
+    volumes:
+      - ./data/models/funie:/models:ro
 
   api:
     environment:

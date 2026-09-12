@@ -5,7 +5,7 @@ import uuid
 from collections import Counter
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings, get_settings
-from app.db.database import get_db
+from app.db.database import get_db, session_factory_for
 from app.db.models import (
     LIVE_OPEN_STATUSES,
     LiveFishDetection,
@@ -21,8 +21,17 @@ from app.db.models import (
     LiveMonitorSession,
     utc_now,
 )
+from app.schemas.track import TrackSpeciesUpdate
 from app.services.live_monitor import aware, stored_media_path
 from app.services.species_quality import review_diagnostics
+from app.services.species_request import (
+    IdentificationBusyError,
+    IdentificationDisabledError,
+    claim,
+    identification_payload,
+    requested_frames,
+    run_request,
+)
 from app.services.video_media import MediaPathError
 
 router = APIRouter(prefix="/live", tags=["live"])
@@ -34,6 +43,12 @@ class StartRequest(BaseModel):
     source: str | None = None
     species_id_fish_target: int | None = Field(default=None, ge=0)
     species_id_frames_per_fish: int | None = Field(default=None, ge=1, le=20)
+
+
+class IdentifyRequest(BaseModel):
+    """How many frames of one chosen fish the operator is willing to pay for."""
+
+    frames: int | None = Field(default=None, ge=1, le=50)
 
 
 def get_source(settings, key):
@@ -77,6 +92,7 @@ def session_data(session, settings, db):
                        "fish_identified": counts.get("identified", 0),
                        "fish_review_required": counts.get("review_required", 0) + counts.get("error", 0),
                        "api_calls": session.species_id_api_calls,
+                       "manual_api_calls": session.species_id_manual_api_calls,
                        "candidates": counts.get("candidate", 0),
                        "calls_saved": session.species_id_calls_saved,
                        "region": session.species_id_region},
@@ -111,8 +127,11 @@ def track_data(track):
         "fishial_species_confidence": track.fishial_species_confidence,
         "fishial_frames_used": track.fishial_frames_used, "fishial_votes": track.fishial_votes,
         "fishial_quality_score": track.fishial_quality_score,
+        "manual_species": track.manual_species,
+        "manual_species_at": aware(track.manual_species_at) if track.manual_species_at else None,
         "fishial_diagnostics": review_diagnostics(track.fishial_votes)
         if track.fishial_state in {"review_required", "error"} else None,
+        "identification": identification_payload(track),
     }
 
 
@@ -126,7 +145,9 @@ def sources(db: Session = Depends(get_db), settings: Settings = Depends(get_sett
             "available": not settings.viame_mock,
             "fishial": {"enabled": settings.fishial_enabled,
                         "max_fish_per_session": settings.fishial_max_fish_per_session,
-                        "default_frames_per_fish": settings.fishial_default_frames_per_fish},
+                        "default_frames_per_fish": settings.fishial_default_frames_per_fish,
+                        "request_max_frames": settings.fishial_request_max_frames,
+                        "request_default_frames": settings.fishial_request_default_frames},
             "sources": [{"key": source.key, "label": source.label, "location": source.location,
                          "url": source.url, "active_session_id": active.get(source.key)}
                         for source in settings.live_source_registry]}
@@ -281,6 +302,53 @@ def checked_path(settings, session_id, value):
     if path is None:
         raise HTTPException(404, "Live media has not been generated or is no longer available")
     return path
+
+
+@router.post("/tracks/{track_id}/identify", status_code=202)
+def identify_live_track(track_id: uuid.UUID, background: BackgroundTasks,
+                        body: IdentifyRequest | None = None, db: Session = Depends(get_db),
+                        settings: Settings = Depends(get_settings)):
+    """Name one fish an operator picked out of the live view, on demand.
+
+    Available whether or not the session was started with automatic identification:
+    that setting fixes what the session buys on its own, and says nothing about what
+    an operator may ask for while watching. Its frames come from the footage the
+    session has already retained, so a fish still in view can be identified from the
+    moments it has shown so far.
+    """
+
+    track = db.get(LiveFishTrack, track_id)
+    if track is None:
+        raise HTTPException(404, "Live fish track not found")
+    frames = requested_frames(body.frames if body else None, settings)
+    try:
+        claim(db, track, frames, settings)
+    except (IdentificationBusyError, IdentificationDisabledError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    background.add_task(run_request, session_factory_for(db), LiveFishTrack, track.id, settings)
+    return track_data(track)
+
+
+@router.patch("/tracks/{track_id}/species")
+def assign_live_track_species(track_id: uuid.UUID, payload: TrackSpeciesUpdate,
+                              db: Session = Depends(get_db)):
+    """Name a fish in the live view yourself, without waiting on a classifier.
+
+    The same column and the same rules as a library track: its own field, nothing
+    else touched, and clearing it puts the machine's answer back on top. Available
+    while the session is still running, because the moment an operator recognises a
+    fish is while they are watching it.
+    """
+
+    track = db.get(LiveFishTrack, track_id)
+    if track is None:
+        raise HTTPException(404, "Live fish track not found")
+    if track.manual_species != payload.species:
+        track.manual_species = payload.species
+        track.manual_species_at = utc_now() if payload.species else None
+        db.commit()
+        db.refresh(track)
+    return track_data(track)
 
 
 @router.get("/tracks/{track_id}/clip")

@@ -1,0 +1,480 @@
+/* Two panes: a resizable list rail and a detail pane. */
+
+.layout {
+  display: grid;
+  grid-template-columns: var(--rail, 420px) 1px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.listPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--hairline);
+}
+
+.resizer {
+  width: 1px;
+  cursor: col-resize;
+  background: var(--hairline);
+  position: relative;
+}
+
+.resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.resizer:hover,
+.resizer[data-dragging] {
+  background: var(--accent);
+}
+
+.detailPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-raised);
+}
+
+/* --- Header and filters --------------------------------------------------- */
+
+.listHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-raised);
+  flex: none;
+}
+
+/*
+ * The filter toolbar. Controls are gathered into groups divided by rules —
+ * search | facets | date | run properties | sort — so the bar reads as one
+ * instrument with sections rather than as a dozen disconnected pills.
+ */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: var(--space-2);
+}
+
+.filterGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  border-left: 1px solid var(--hairline);
+}
+
+.filterGroup:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.filterGroup[data-grow] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.filterGroup[data-end] {
+  margin-left: auto;
+  padding-right: 0;
+  gap: var(--space-1);
+}
+
+/* A row of controls inside one group. */
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.resultLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.resultText {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.resultCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+/* "updating" is a word with a pulse, not a spinner competing with the list. */
+/* Background refresh in progress: activity, not something to press. */
+.updating {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-muted);
+}
+
+.updating::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: updating-pulse 1200ms var(--ease-in-out) infinite;
+}
+
+@keyframes updating-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .updating::before {
+    animation: none;
+  }
+}
+
+.savedViews {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- The list ------------------------------------------------------------- */
+
+.list {
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-raised);
+}
+
+.list li {
+  animation: settle-in var(--motion) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list li {
+    animation: none;
+  }
+}
+
+/*
+ * A record row: a status rail on the left edge, a checkbox, two dense lines of
+ * metadata, and actions that appear on approach. The rail is what lets an
+ * operator scan processing state down the list without reading a word.
+ */
+.rowWrap {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-raised);
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.rowWrap::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+/*
+ * The edge answers "how did this one go", in the status hues at full strength
+ * — a 3px rule is not text, so it does not need the darkened text values.
+ */
+.rowWrap[data-status='completed']::before {
+  background: var(--status-completed-edge);
+}
+
+.rowWrap[data-status='failed']::before {
+  background: var(--status-failed-edge);
+}
+
+.rowWrap[data-status='flagged']::before,
+.rowWrap[data-status='awaiting']::before {
+  background: var(--status-flagged-edge);
+}
+
+.rowWrap[data-status='processing']::before {
+  background: var(--status-processing-edge);
+}
+
+/* Queued is waiting, not running, so its edge stays neutral like its pill. */
+.rowWrap[data-status='queued']::before {
+  background: var(--status-queued-edge);
+}
+
+.rowWrap:hover {
+  background: var(--surface-hover);
+}
+
+/*
+ * Selection answers a different question — "which ones am I acting on" — so it
+ * gets its own hue rather than a deeper green. Ticked rows take the blue wash;
+ * the open record takes the wash and the edge, which outranks the status edge
+ * because the status is still spelled out in the row's own pill.
+ */
+.rowWrap[data-selected] {
+  background: var(--accent-quiet);
+}
+
+.rowWrap[data-current] {
+  background: var(--accent-quiet);
+}
+
+.rowWrap[data-current]::before {
+  background: var(--accent);
+  width: 3px;
+}
+
+.rowWrap[data-selected]:hover,
+.rowWrap[data-current]:hover {
+  background: var(--accent-quiet-hover);
+}
+
+.rowCheck {
+  padding-top: 3px;
+}
+
+.rowLink {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A recorded live session sits in the library beside uploads; the badge says
+   where the footage came from without competing with the processing status. */
+.rowBadge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+
+.rowStat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A dot instead of a typed interpunct, so the rhythm is even. */
+.rowDot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--hairline-strong);
+  flex: none;
+}
+
+/* Figure then unit: the number is monospaced, the unit is not. */
+.rowFigure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.rowFigureValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.rowFlag,
+.rowFlag .rowFigureValue {
+  color: var(--status-flagged);
+}
+
+.rowReview {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--ink-faint);
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-top: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.rowWrap:hover .rowActions,
+.rowWrap:focus-within .rowActions {
+  opacity: 1;
+}
+
+/* --- Bulk bar ------------------------------------------------------------- */
+
+.bulkBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--hairline-strong);
+  background: var(--surface-raised);
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.bulkCount {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+}
+
+.bulkHidden {
+  color: var(--ink-muted);
+  font-weight: var(--weight-normal);
+}
+
+.bulkSpacer {
+  margin-left: auto;
+}
+
+.bulkProgress {
+  flex-basis: 100%;
+}
+
+/* --- Paging --------------------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-raised);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  flex: none;
+}
+
+.pagerControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pagerRange {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Skeleton ------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .resizer {
+    display: none;
+  }
+
+  .listPane {
+    border-right: 0;
+  }
+
+  .layout[data-detail-open] .listPane {
+    display: none;
+  }
+
+  .layout:not([data-detail-open]) .detailPane {
+    display: none;
+  }
+
+  /* Narrow, the groups stack, so the rules become top rules instead. */
+  .filterGroup {
+    padding-inline: 0;
+    border-left: 0;
+  }
+
+  .filterGroup[data-end] {
+    margin-left: 0;
+  }
+}

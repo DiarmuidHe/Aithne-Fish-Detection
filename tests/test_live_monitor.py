@@ -114,6 +114,76 @@ def test_unpublishable_snapshot_does_not_end_the_session(db_session_factory, tes
         assert not list(Path(monitor.live_path(test_settings, str(session.id))).glob("*.tmp.jpg"))
 
 
+def published_frames(tracker):
+    """Record every annotated frame the tracker actually publishes."""
+    written = []
+    original = tracker._write_jpeg
+
+    def record(path, frame):
+        if path.name == "annotated.jpg":
+            written.append(frame.shape)
+        return original(path, frame)
+
+    tracker._write_jpeg = record
+    return written
+
+
+def test_annotated_view_is_published_at_its_own_rate(db_session_factory, test_settings, synthetic_frame):
+    """Sampling faster than the dashboard polls must not cost a publish per frame.
+
+    Publishing one JPEG to a bind-mounted output volume costs far more than the
+    tracking it accompanies, so at 4 FPS it dominated the segment. Every frame is
+    still detected and recorded; only the live view is thinned to the rate an
+    operator can actually see.
+    """
+
+    settings = test_settings.model_copy(update={"live_fps": 4, "live_snapshot_fps": 2})
+    now = utc_now()
+    with db_session_factory() as db:
+        session = new_session(db)
+        tracker = LiveTracker(db, session, settings)
+        written = published_frames(tracker)
+        for index in range(8):
+            tracker.process_frame(synthetic_frame, [detection(frame=index)],
+                                  now + timedelta(seconds=index / 4))
+        db.commit()
+        # Capture time drives the rate, so a replay thins exactly as a live feed does.
+        assert len(written) == 4
+        # The first frame publishes immediately: an operator should not wait for it.
+        assert session.snapshot_path is not None and Path(session.snapshot_path).is_file()
+        # Thinning the view changes nothing about what was detected or stored.
+        assert session.frames_processed == 8
+        assert db.scalar(select(func.count()).select_from(LiveFishDetection)) == 8
+
+
+def test_published_annotated_view_is_capped_for_display(db_session_factory, test_settings):
+    """The detector sees the full capture; the operator's view is only a picture of it."""
+
+    settings = test_settings.model_copy(update={"live_snapshot_max_width": 640})
+    frame = np.full((1080, 1920, 3), (110, 70, 20), dtype=np.uint8)
+    with db_session_factory() as db:
+        session = new_session(db)
+        tracker = LiveTracker(db, session, settings)
+        written = published_frames(tracker)
+        tracker.process_frame(frame, [detection(x=900, confidence=.95)], utc_now())
+        db.commit()
+        assert written == [(360, 640, 3)]
+        # Boxes are stored in full-capture pixels, not the coordinates of the thumbnail.
+        stored = db.scalar(select(LiveFishDetection))
+        assert stored.x1 == 900 and stored.x2 == 935
+
+
+def test_a_smaller_capture_is_published_unscaled(db_session_factory, test_settings, synthetic_frame):
+    """A feed below the cap gains nothing from being enlarged, so it is left alone."""
+
+    with db_session_factory() as db:
+        session = new_session(db)
+        tracker = LiveTracker(db, session, test_settings)
+        written = published_frames(tracker)
+        tracker.process_frame(synthetic_frame, [detection()], utc_now())
+        assert written == [synthetic_frame.shape]
+
+
 def test_chunk_ids_reassociate_but_never_resurrect_lost_track(db_session_factory, test_settings, synthetic_frame):
     with db_session_factory() as db:
         session = new_session(db)
@@ -136,6 +206,129 @@ def test_invalid_and_low_confidence_boxes_ignored(db_session_factory, test_setti
         tracker = LiveTracker(db, new_session(db), test_settings)
         tracker.process_frame(synthetic_frame, [detection(confidence=.1), detection(x=float("nan")), detection(x=900)], utc_now())
         assert not tracker.active
+
+
+@pytest.fixture
+def association_tracker(db_session_factory, test_settings, monkeypatch):
+    # Exercise real association and persisted detections without encoding media.
+    test_settings.live_fps = 2
+    monkeypatch.setattr(LiveTracker, "_save_crop", lambda *args: None)
+    monkeypatch.setattr(LiveTracker, "_write_jpeg", lambda *args: None)
+    monkeypatch.setattr(LiveTracker, "_render_clip", lambda *args: None)
+    with db_session_factory() as db:
+        yield LiveTracker(db, new_session(db), test_settings)
+
+
+def observed_ids(tracker):
+    tracker.db.flush()
+    rows = tracker.db.scalars(select(LiveFishDetection).where(
+        LiveFishDetection.frame_number == tracker.session.frames_processed - 1)).all()
+    return {row.x1: row.track_id for row in rows}
+
+
+def test_low_fps_motion_survives_large_steps_and_segment_reset(association_tracker, synthetic_frame):
+    tracker, now = association_tracker, utc_now()
+    tracker.process_frame(synthetic_frame, [detection(x=10)], now)
+    original = observed_ids(tracker)[10]
+    # More than a box width per sampled frame: no last-box overlap.
+    tracker.begin_segment()
+    tracker.process_frame(synthetic_frame, [detection(x=50)], now + timedelta(seconds=.5))
+    assert observed_ids(tracker)[50] == original
+    tracker.begin_segment()
+    tracker.process_frame(synthetic_frame, [detection("99", x=90)], now + timedelta(seconds=1))
+    assert observed_ids(tracker)[90] == original
+    tracker.process_frame(synthetic_frame, [], now + timedelta(seconds=1.5))
+    tracker.process_frame(synthetic_frame, [detection("7", x=170)], now + timedelta(seconds=2))
+    assert observed_ids(tracker)[170] == original
+
+
+def test_four_fps_tracking_keeps_the_sixty_percent_acceptance_floor(association_tracker, synthetic_frame):
+    tracker, now = association_tracker, utc_now()
+    tracker.settings.live_fps = 4
+    tracker.settings.min_fish_confidence = .60
+    original = None
+    for index, x in enumerate((20, 40, 60, 80)):
+        if index == 2:
+            tracker.begin_segment()
+        tracker.process_frame(synthetic_frame, [detection(str(index), x=x, confidence=.60),
+                              detection("weak", x=180, confidence=.599)],
+                              now + timedelta(seconds=index / 4))
+        ids = observed_ids(tracker)
+        assert set(ids) == {x}
+        original = original or ids[x]
+        assert ids[x] == original
+    assert tracker.active[original].mean_confidence == pytest.approx(.60)
+
+
+@pytest.mark.parametrize("replacement", [
+    detection(x=170),
+    VIAMEDetection("1", "synthetic", 0, 40, 25, 145, 115, .9, None, "fish", .9, None),
+    VIAMEDetection("1", "synthetic", 0, 50, 40, 110, 55, .9, None, "fish", .9, None),
+    VIAMEDetection("1", "synthetic", 0, 50, 40, 85, 70, .9, None, "crab", .9, None),
+])
+def test_segment_id_cannot_override_geometry_or_class(association_tracker, synthetic_frame, replacement):
+    tracker, now = association_tracker, utc_now()
+    tracker.process_frame(synthetic_frame, [detection()], now)
+    original = observed_ids(tracker)[50]
+    tracker.process_frame(synthetic_frame, [replacement], now + timedelta(seconds=.5))
+    assert original not in observed_ids(tracker).values()
+    assert tracker.active[original].detection_count == 1
+
+
+@pytest.mark.parametrize("reset", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_crossing_fish_follow_motion_even_if_viame_ids_swap(association_tracker, synthetic_frame, reset, reverse):
+    tracker, now = association_tracker, utc_now()
+    def step(seconds, left, right, swap=False):
+        observations = [detection("2" if swap else "1", x=left),
+                        detection("1" if swap else "2", x=right)]
+        tracker.process_frame(synthetic_frame, observations[::-1] if reverse else observations,
+                              now + timedelta(seconds=seconds))
+        return observed_ids(tracker)
+    initial = step(0, 20, 160)
+    assert step(.5, 50, 130) == {50: initial[20], 130: initial[160]}
+    assert step(1, 80, 100, swap=not reset) == {80: initial[20], 100: initial[160]}
+    if reset:
+        tracker.begin_segment()  # The nearest last boxes now belong to the wrong fish.
+    assert step(1.5, 110, 70, swap=True) == {110: initial[20], 70: initial[160]}
+
+
+def test_missed_moving_track_cannot_steal_fish_at_its_old_box(association_tracker, synthetic_frame):
+    tracker, now = association_tracker, utc_now()
+    tracker.process_frame(synthetic_frame, [detection(x=20)], now)
+    original = observed_ids(tracker)[20]
+    tracker.process_frame(synthetic_frame, [detection(x=50)], now + timedelta(seconds=.5))
+    tracker.process_frame(synthetic_frame, [], now + timedelta(seconds=1))
+    tracker.process_frame(synthetic_frame, [detection(x=52)], now + timedelta(seconds=1.5))
+    assert observed_ids(tracker)[52] != original
+    tracker.process_frame(synthetic_frame, [detection("new-id", x=140), detection(x=54)],
+                          now + timedelta(seconds=2))
+    assert observed_ids(tracker)[140] == original
+    assert observed_ids(tracker)[54] != original
+
+
+@pytest.mark.parametrize("reset", [False, True])
+def test_stale_unexpired_track_is_not_a_reassociation_candidate(association_tracker, synthetic_frame, reset):
+    tracker, now = association_tracker, utc_now()
+    tracker.process_frame(synthetic_frame, [detection()], now)
+    original = observed_ids(tracker)[50]
+    if reset:
+        tracker.begin_segment()
+    tracker.process_frame(synthetic_frame, [detection(x=52)], now + timedelta(seconds=4))
+    assert tracker.active[original].status == "active"  # Retention is not permission to match.
+    assert observed_ids(tracker)[52] != original
+
+
+@pytest.mark.parametrize("two_tracks", [False, True])
+def test_ambiguous_match_does_not_reuse_identity(association_tracker, synthetic_frame, two_tracks):
+    tracker, now = association_tracker, utc_now()
+    initial = [detection(x=50), detection("2", x=70)] if two_tracks else [detection(x=60)]
+    tracker.process_frame(synthetic_frame, initial, now)
+    originals = set(observed_ids(tracker).values())
+    # Test ambiguity in both directions; even an existing VIAME ID must not break a tie.
+    observations = [detection(x=60)] if two_tracks else [detection(x=59), detection("2", x=61)]
+    tracker.process_frame(synthetic_frame, observations, now + timedelta(seconds=.5))
+    assert originals.isdisjoint(observed_ids(tracker).values())
 
 
 def test_activity_updates_and_media_endpoints(client, db_session_factory, test_settings, synthetic_frame, monkeypatch):
@@ -389,6 +582,7 @@ def test_hosted_player_resolution_accepts_video_only_renditions(test_settings, m
     # Live streams often publish no muxed format, so a video-only selector must come first.
     selector = captured["args"][captured["args"].index("-f") + 1]
     assert selector.split("/")[0].startswith("bv*")
+    assert "height<=?1080" in selector.split("/")[0]
 
 
 def test_capture_only_uses_closed_segments_and_drops_backlog(test_settings, tmp_path, monkeypatch):
@@ -491,6 +685,101 @@ def test_worker_processes_synthetic_chunk_and_finalizes_on_shutdown(db_session_f
         assert session.species_id_calls_saved == (2 if identify else 0)
         assert session.species_id_api_calls == len(calls)
         assert not scratch_path(test_settings, str(sid)).exists()
+
+
+@pytest.mark.parametrize("gap", [0, 12])
+def test_worker_expires_on_capture_time_not_waiting_wall_clock(
+        db_session_factory, test_settings, synthetic_frame, monkeypatch, gap):
+    import app.workers.live_worker as worker
+
+    shutdown, now = threading.Event(), utc_now()
+    test_settings.live_fps = 2
+    test_settings.live_recording_enabled = False
+    monkeypatch.setattr(worker, "utc_now", lambda: now + timedelta(seconds=120))
+    monkeypatch.setattr(LiveTracker, "_render_clip", lambda *args: None)
+
+    class Capture:
+        dropped = 0
+        def __init__(self, url, directory, settings):
+            directory.mkdir(parents=True)
+            self.directory, self.calls = directory, 0
+
+        def next_segment(self):
+            self.calls += 1
+            if self.calls == 2:
+                return None  # Capture is still writing; the wall clock is far ahead.
+            if self.calls > 3:
+                shutdown.set()
+                return None
+            path = self.directory / f"{self.calls}.mp4"
+            writer = video_media.open_video_writer(video_media.load_cv2(), path, 2, 240, 160)
+            for _ in range(2):
+                writer.write(synthetic_frame)
+            writer.release()
+            offset = 0 if self.calls == 1 else 1 + gap
+            return Segment(path, now + timedelta(seconds=offset))
+
+        def close(self):
+            pass
+
+    with db_session_factory() as db:
+        sid = new_session(db).id
+    claim_session(db_session_factory, "test")
+    run_session(sid, test_settings, db_session_factory, shutdown,
+                resolver=lambda *_: "stub", capture_factory=Capture,
+                detector=lambda *_: [detection(frame=i) for i in range(2)])
+    with db_session_factory() as db:
+        tracks = db.scalars(select(LiveFishTrack)).all()
+        assert sorted(t.detection_count for t in tracks) == ([2, 2] if gap else [4])
+        assert db.get(LiveMonitorSession, sid).frames_processed == 4
+        assert sum(t.finalization_reason == "lost" for t in tracks) == bool(gap)
+
+
+def test_worker_overlaps_next_inference_with_current_rendering(
+        db_session_factory, test_settings, synthetic_frame, monkeypatch):
+    shutdown, next_started, now = threading.Event(), threading.Event(), utc_now()
+    test_settings.live_recording_enabled = False
+
+    class Capture:
+        dropped = 0
+        def __init__(self, url, directory, settings):
+            directory.mkdir(parents=True)
+            self.directory, self.served = directory, 0
+        def next_segment(self):
+            if self.served == 2:
+                shutdown.set()
+                return None
+            path = self.directory / f"{self.served}.mp4"
+            writer = video_media.open_video_writer(video_media.load_cv2(), path, 4, 240, 160)
+            writer.write(synthetic_frame)
+            writer.release()
+            segment = Segment(path, now + timedelta(seconds=self.served / 4))
+            self.served += 1
+            return segment
+        def close(self):
+            pass
+
+    def detector(segment, *_):
+        if segment.path.stem == "1":
+            next_started.set()
+        return [detection()]
+
+    original = LiveTracker.process_frame
+    overlapped = []
+    def process(tracker, frame, observations, timestamp):
+        if tracker.session.frames_processed == 0:
+            overlapped.append(next_started.wait(timeout=1))
+        return original(tracker, frame, observations, timestamp)
+
+    monkeypatch.setattr(LiveTracker, "process_frame", process)
+    with db_session_factory() as db:
+        sid = new_session(db).id
+    claim_session(db_session_factory, "test")
+    run_session(sid, test_settings, db_session_factory, shutdown,
+                resolver=lambda *_: "stub", capture_factory=Capture, detector=detector)
+    assert overlapped == [True]
+    with db_session_factory() as db:
+        assert db.get(LiveMonitorSession, sid).frames_processed == 2
 
 
 def test_detector_crash_skips_one_segment_and_keeps_monitoring(db_session_factory, test_settings, synthetic_frame):
@@ -627,7 +916,8 @@ def test_stream_closes_on_disconnect(db_session_factory, test_settings):
 
 
 def test_dashboard_contains_live_panel(client):
-    html = client.get("/").text
+    # The legacy dashboard, kept at /legacy until parity is signed off.
+    html = client.get("/legacy").text
     assert 'id="live-panel"' in html and 'id="live-gallery"' in html
     # live.js populates the selector and reads the hint by these ids.
     assert 'id="live-source"' in html and 'for="live-source"' in html and 'id="live-source-hint"' in html
@@ -728,6 +1018,8 @@ def fixed_quality(tracker, monkeypatch, short_sides):
 
 def test_species_staging_ranks_frames_and_keeps_a_clean_crop(db_session_factory, test_settings, monkeypatch):
     test_settings.fishial_enabled = True
+    test_settings.fishial_preprocess = "funie_gan"
+    monkeypatch.setattr(LiveTracker, "_preprocess_crop", lambda *args: pytest.fail("Enhanced at staging"))
     frame = np.zeros((300, 700, 3), dtype=np.uint8)
     frame[:] = (30, 90, 150)
     def obs(key, x, confidence=.9):

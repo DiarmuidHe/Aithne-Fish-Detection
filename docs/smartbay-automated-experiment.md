@@ -18,7 +18,8 @@ measurements and expected target box. If two suitable tracks are unavailable, it
 exits without making Fishial calls.
 
 The paid phase runs only through `scripts/fishial_replay.py --replay ... --max-calls 6`.
-It sends the two originals, then the same two crops with CLAHE, then white balance.
+New experiments now run crop-first: original, CLAHE and white balance for one crop,
+then the next crop, with retry holdback for the remaining sides.
 Six is the total image-request ceiling, including retries and authentication refresh
 retries. Retries can leave fewer than six completed comparisons. Each request is
 reserved durably in `replay.sqlite` before sending. Restarting with the same directory
@@ -38,7 +39,15 @@ The report distinguishes a usable classifier answer from verified species accura
 Two crops cannot establish production accuracy, so this screen leaves
 `fishial_preprocess=none` and the voting thresholds unchanged. It does not start a
 recurring paid experiment. Rerunning the same command resumes the same six-call
-experiment rather than creating a new allowance. Preserve its journal.
+experiment rather than creating a new allowance with its original code. The newer frozen
+specification refuses reuse of this completed journal. Preserve it; use a new directory.
+
+For the optional FUnIE-GAN pair, see [setup, offline results and the separately paid
+command](funie-gan-results.md). `--preprocess-modes none,funie_gan` freezes modes, hashes,
+boxes, model provenance, evaluation settings and ceiling. An optional per-crop
+`ground_truth_scientific_name` in `manifest.json` enables correct/wrong/abstained reporting.
+Unlabelled usable answers are never counted as correct. `--dry-run` only replays stored
+responses and cannot assess a new image transform. No paid FUnIE replay was run.
 
 For standalone deployment, the same Python command runs wherever real VIAME,
 FFmpeg and configured Fishial credentials are available. The Docker command mounts

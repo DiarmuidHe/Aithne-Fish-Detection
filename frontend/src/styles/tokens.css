@@ -1,0 +1,449 @@
+/*
+ * Colour carries meaning here, and each meaning owns one hue.
+ *
+ *   green    identity, the monitoring environment, success
+ *   blue     interaction: what you can click, focus or select
+ *   amber    attention: awaiting review, thresholds, warnings
+ *   red      failure, and actions that destroy
+ *   plum     the comparison series in analysis
+ *   neutral  everything else, which is most of the product
+ *
+ * The greens are the brand ramp — sage #9DB2A3 -> forest #4A6B53 -> deep
+ * #1E3A27 — and they stay where the brand is doing work: the rail, the
+ * console strip, the footage surrounds, a bar that fills, a finished state.
+ * They are no longer the default for an ordinary surface or an ordinary
+ * control, because when everything is green nothing is.
+ *
+ * Components consume the semantic names; only the semantic names read the
+ * raw palette. Nothing downstream should ever name a colour.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* --- Raw palette. Only the semantic tokens below may read these. -------- */
+
+  /* The brand ramp. */
+  --brand-sage: #9db2a3;
+  --brand-forest: #4a6b53;
+  --brand-deep: #1e3a27;
+
+  /* Interaction. One blue, three depths, and the tint it selects with. */
+  --palette-action: #2f6690;
+  --palette-action-deep: #27567a;
+  --palette-action-deepest: #1f4560;
+  --palette-action-tint: #e8f0f6;
+  --palette-action-tint-deep: #d8e5f0;
+
+  /* Analysis. The comparison hue, kept muted so it reads as data, not decor. */
+  --palette-plum: #6b4a62;
+  --palette-plum-light: #b29dac;
+
+  /*
+   * Attention and failure. Each has a fill value and a text value: the fill is
+   * the supplied colour, the text is that colour taken down far enough to hold
+   * 4.5:1 on its own tint at 12px, which the fill value does not.
+   */
+  --palette-amber: #a66a24;
+  --palette-amber-text: #8a5a1e;
+  --palette-amber-tint: #f6eee2;
+  --palette-red: #b34f4a;
+  --palette-red-text: #9c4440;
+  --palette-red-tint: #f7e9e7;
+
+  /* Success, which is the ramp rather than a fourth green. */
+  --palette-green-text: #2f6b42;
+  --palette-green-tint: #e4eee6;
+
+  /* The reference neutral in a chart, and the weathered warm neutral. */
+  --palette-stone: #707a83;
+  --palette-sand: #ab9878;
+
+  /* --- Brand gradients. Green, and only where length means something. ----- */
+  --brand-gradient: linear-gradient(
+    90deg,
+    var(--brand-sage),
+    var(--brand-forest) 50%,
+    var(--brand-deep)
+  );
+  --brand-gradient-vertical: linear-gradient(
+    160deg,
+    var(--brand-sage),
+    var(--brand-forest) 45%,
+    var(--brand-deep)
+  );
+  /*
+   * The shell carries the ramp in its lower register — the same three steps,
+   * dropped until light ink clears 7:1 on the lightest of them.
+   */
+  --gradient-shell: linear-gradient(168deg, #35533d, #26422f 46%, #16281c);
+  /* The same run laid on its side, for the full-bleed console strip. */
+  --gradient-console: linear-gradient(100deg, #2f4c37 0%, #233d2c 52%, #17291d);
+  /* Bars that fill: the whole ramp, because the length is the message. */
+  --gradient-meter: linear-gradient(
+    90deg,
+    var(--brand-sage),
+    var(--brand-forest) 58%,
+    var(--brand-deep)
+  );
+
+  --media-overlay: rgb(13 25 17 / 84%);
+  --media-ink: #f1f4ec;
+  /* Footage sits on near-black with the ramp's hue still in it. */
+  --media-well: #0b140e;
+
+  /* --- Content surfaces. Neutral, with only a trace of the ramp's hue. ---- */
+  --surface: #f5f6f4;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f0f2ef;
+  --surface-hover: #eceeea;
+  --surface-active: #e3e6e2;
+  /*
+   * Section grounds. A page is not one ground with cards on it: bands of
+   * slightly different material carry the section rhythm, so a run of panels
+   * never has to do that work by multiplying borders.
+   */
+  --band: #f0f2ef;
+  --band-strong: #e6e9e5;
+
+  /* --- Ink. Three tiers, every one of them AA on the surfaces above. ------ */
+  --ink: #202622;
+  --ink-muted: #5a625d;
+  /* Holds 4.5:1 against --surface-sunken at 12px. */
+  --ink-faint: #68706b;
+  --ink-inverse: #ffffff;
+
+  /* --- Hairlines do the separating work that shadows used to. ------------- */
+  --hairline: #d7dcd8;
+  --hairline-strong: #bcc3bd;
+
+  /*
+   * --- The interaction accent. ---------------------------------------------
+   * Blue, and blue is reserved: if it is blue, it is because you can act on
+   * it. Primary buttons, links, the active tab, a selected row, a checked box,
+   * a focus ring. Nothing inert may borrow it, and nothing that is merely
+   * finished or merely running may borrow it either.
+   */
+  --accent: var(--palette-action);
+  --accent-hover: var(--palette-action-deep);
+  --accent-active: var(--palette-action-deepest);
+  --accent-quiet: var(--palette-action-tint);
+  --accent-quiet-hover: var(--palette-action-tint-deep);
+  --accent-ink: #ffffff;
+  --focus-ring: var(--palette-action);
+  --selection: #d3e2ee;
+
+  /*
+   * --- The forest shell. ---------------------------------------------------
+   * Fixed in both themes: the rail and the console strip are the constant the
+   * operator navigates by, and they stay green. Only the content beside them
+   * changes with theme.
+   */
+  --chrome: #1e3a27;
+  --chrome-raised: #294532;
+  --chrome-hover: #34523d;
+  --chrome-active: #405f48;
+  --chrome-ink: #f1f4ec;
+  --chrome-ink-muted: #c3d0bd;
+  /* Lifted to clear 4.5:1 on the lightest step of --gradient-shell. */
+  --chrome-ink-faint: #b6c6af;
+  --chrome-hairline: #3d5743;
+  --chrome-hairline-strong: #657e69;
+  /* Sage, lifted just enough to carry on the shell's darkest step. */
+  --chrome-accent: #b0c8b2;
+  --chrome-accent-hover: #c6d9c4;
+  --chrome-accent-active: #d6e3d2;
+  --chrome-accent-quiet: #34523d;
+  /*
+   * Interaction inside a dark green region. The page blue is far too dark to
+   * sit on the shell, so the same hue is lifted until it clears 4.5:1 there
+   * and still reads as the blue from the light side of the product.
+   */
+  --chrome-action: #8fb8d8;
+  --chrome-action-hover: #abcbe4;
+  --chrome-action-active: #c4dcef;
+  --chrome-action-quiet: #23415c;
+  --chrome-status-completed: #a9c4a6;
+  --chrome-status-failed: #dda593;
+  --chrome-status-flagged: #d2ae88;
+  /*
+   * On a rail that is a gradient, a flat hover would only match at one height.
+   * The rail's own states are sage laid over whatever step is underneath.
+   */
+  --rail-hover: rgb(157 178 163 / 15%);
+  --rail-active: rgb(157 178 163 / 23%);
+  --rail-selected: rgb(157 178 163 / 19%);
+  --rail-hairline: rgb(157 178 163 / 20%);
+
+  /*
+   * --- Reserved status set. Nothing else may use these. -------------------
+   * Green for healthy and finished, neutral for inert, amber for the one
+   * state that wants a person, red for the one that is broken. Scanning a
+   * list, the exceptions are the warm ones. Status is never the same colour
+   * as selection, because they answer different questions.
+   */
+  --status-uploaded: #5a625d;
+  --status-uploaded-bg: #eceeea;
+  --status-queued: #5a625d;
+  --status-queued-bg: #eceeea;
+  --status-processing: var(--palette-green-text);
+  --status-processing-bg: var(--palette-green-tint);
+  --status-completed: var(--palette-green-text);
+  --status-completed-bg: var(--palette-green-tint);
+  --status-failed: var(--palette-red-text);
+  --status-failed-bg: var(--palette-red-tint);
+  --status-flagged: var(--palette-amber-text);
+  --status-flagged-bg: var(--palette-amber-tint);
+  /*
+   * Edge and dot values. A 3px rule or a 6px dot is not text, so it takes the
+   * supplied colour at full strength rather than the darkened text value.
+   */
+  --status-uploaded-edge: #aab1ac;
+  --status-queued-edge: #aab1ac;
+  --status-processing-edge: var(--brand-forest);
+  --status-completed-edge: var(--brand-forest);
+  --status-failed-edge: var(--palette-red);
+  --status-flagged-edge: var(--palette-amber);
+
+  /* --- Sand and stone, the two supporting neutrals. ----------------------- */
+  --sand: var(--palette-sand);
+  --sand-soft: #e9e3d3;
+  --stone: var(--palette-stone);
+
+  /*
+   * --- Data visualisation. -------------------------------------------------
+   * One hue per meaning, in a fixed order, so the second series is the same
+   * colour on every screen: the subject in brand green, its comparison in the
+   * interaction blue, a third in plum, a threshold in amber, a baseline in
+   * stone. A single-series chart is green and stops there. This is a sequence,
+   * not a rainbow — nothing gets added to it for variety.
+   */
+  --chart-1: var(--brand-forest);
+  --chart-1-hover: #3c5943;
+  --chart-2: var(--palette-action);
+  --chart-3: var(--palette-plum);
+  --chart-4: var(--palette-amber);
+  --chart-5: var(--palette-stone);
+  /* Bars that are present but not the point: context behind the subject. */
+  --chart-muted: #c8cec9;
+  --chart-grid: #e1e5e0;
+  --chart-track: #e6e9e4;
+
+  /* --- Type: a text face and a monospace face, both from the OS. --------- */
+  --font-text:
+    'Inter var', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', Menlo,
+    Consolas, monospace;
+
+  /* Steps sized for a console: nothing marketing-sized, each with its own leading. */
+  --text-2xs: 11px;
+  --leading-2xs: 14px;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 13px;
+  --leading-sm: 18px;
+  --text-base: 14px;
+  --leading-base: 20px;
+  --text-md: 15px;
+  --leading-md: 22px;
+  --text-lg: 17px;
+  --leading-lg: 24px;
+  --text-xl: 20px;
+  --leading-xl: 27px;
+  /* KPI figures only. The prompt's ceiling is 30px and we sit under it. */
+  --text-2xl: 26px;
+  --leading-2xl: 32px;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+
+  /* Small caps labels above figures and section eyebrows. */
+  --tracking-label: 0.06em;
+
+  /* An 8px scale used with rhythm: related at 8, groups at 24, sections at 40. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-control: 5px;
+  --radius-panel: 6px;
+  --radius-popup: 8px;
+  --radius-region: 0;
+
+  --row-height: 36px;
+  --row-height-media: 44px;
+  --control-height: 32px;
+  --control-height-sm: 26px;
+  --rail-width: 232px;
+  --rail-width-collapsed: 56px;
+  --appbar-height: 56px;
+  --content-max: 1760px;
+
+  --motion-fast: 110ms;
+  --motion: 160ms;
+  --motion-slow: 260ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Elevation: portals, and the one edge where the spine meets the content. */
+  --shadow-popup: 0 8px 24px rgb(22 38 25 / 14%), 0 1px 3px rgb(22 38 25 / 10%);
+  --shadow-panel: 0 1px 2px rgb(22 38 25 / 4%);
+  --shadow-spine: 1px 0 0 rgb(22 38 25 / 8%);
+}
+
+/*
+ * --- Dark content. -----------------------------------------------------------
+ * Neutral darks beneath the same green shell, and the same six meanings: every
+ * hue is lifted until it clears 4.5:1 on the raised surface, and not further.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --surface: #181b19;
+    --surface-raised: #212523;
+    --surface-sunken: #131614;
+    --surface-hover: #2a2f2c;
+    --surface-active: #353b37;
+    --band: #151816;
+    --band-strong: #111413;
+
+    --ink: #e9ece9;
+    --ink-muted: #a7afa9;
+    --ink-faint: #939b95;
+    --ink-inverse: #131614;
+
+    --hairline: #333937;
+    --hairline-strong: #4e5551;
+
+    --accent: #74a9d0;
+    --accent-hover: #93bfdf;
+    --accent-active: #b1d3ea;
+    --accent-quiet: #1d3347;
+    --accent-quiet-hover: #264260;
+    --accent-ink: #0d1c28;
+    --focus-ring: #74a9d0;
+    --selection: #274058;
+
+    --status-uploaded: #a7afa9;
+    --status-uploaded-bg: #2a2f2c;
+    --status-queued: #a7afa9;
+    --status-queued-bg: #2a2f2c;
+    --status-processing: #8fbf9a;
+    --status-processing-bg: #1e3326;
+    --status-completed: #8fbf9a;
+    --status-completed-bg: #1e3326;
+    --status-failed: #e09a94;
+    --status-failed-bg: #3a2725;
+    --status-flagged: #d9a65f;
+    --status-flagged-bg: #352c1c;
+
+    --status-uploaded-edge: #79817b;
+    --status-queued-edge: #79817b;
+    --status-processing-edge: #8fbf9a;
+    --status-completed-edge: #8fbf9a;
+    --status-failed-edge: #e09a94;
+    --status-flagged-edge: #d9a65f;
+
+    --sand: #b19f7f;
+    --sand-soft: #2e2b20;
+    --stone: #8b97a1;
+    /* The sequence again, each step lifted for a dark ground. */
+    --chart-1: #9db2a3;
+    --chart-1-hover: #b5c7b8;
+    --chart-2: #74a9d0;
+    --chart-3: #b29dac;
+    --chart-4: #d9a65f;
+    --chart-5: #8b97a1;
+    --chart-muted: #414845;
+    --chart-grid: #333937;
+    --chart-track: #2a2f2c;
+
+    --shadow-popup: 0 8px 24px rgb(0 0 0 / 48%), 0 1px 3px rgb(0 0 0 / 40%);
+    --shadow-panel: 0 1px 2px rgb(0 0 0 / 20%);
+    --shadow-spine: 1px 0 0 rgb(0 0 0 / 30%);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface: #181b19;
+  --surface-raised: #212523;
+  --surface-sunken: #131614;
+  --surface-hover: #2a2f2c;
+  --surface-active: #353b37;
+  --band: #151816;
+  --band-strong: #111413;
+
+  --ink: #e9ece9;
+  --ink-muted: #a7afa9;
+  --ink-faint: #939b95;
+  --ink-inverse: #131614;
+
+  --hairline: #333937;
+  --hairline-strong: #4e5551;
+
+  --accent: #74a9d0;
+  --accent-hover: #93bfdf;
+  --accent-active: #b1d3ea;
+  --accent-quiet: #1d3347;
+  --accent-quiet-hover: #264260;
+  --accent-ink: #0d1c28;
+  --focus-ring: #74a9d0;
+  --selection: #274058;
+
+  --status-uploaded: #a7afa9;
+  --status-uploaded-bg: #2a2f2c;
+  --status-queued: #a7afa9;
+  --status-queued-bg: #2a2f2c;
+  --status-processing: #8fbf9a;
+  --status-processing-bg: #1e3326;
+  --status-completed: #8fbf9a;
+  --status-completed-bg: #1e3326;
+  --status-failed: #e09a94;
+  --status-failed-bg: #3a2725;
+  --status-flagged: #d9a65f;
+  --status-flagged-bg: #352c1c;
+
+  --status-uploaded-edge: #79817b;
+  --status-queued-edge: #79817b;
+  --status-processing-edge: #8fbf9a;
+  --status-completed-edge: #8fbf9a;
+  --status-failed-edge: #e09a94;
+  --status-flagged-edge: #d9a65f;
+
+  --sand: #b19f7f;
+  --sand-soft: #2e2b20;
+  --stone: #8b97a1;
+  --chart-1: #9db2a3;
+  --chart-1-hover: #b5c7b8;
+  --chart-2: #74a9d0;
+  --chart-3: #b29dac;
+  --chart-4: #d9a65f;
+  --chart-5: #8b97a1;
+  --chart-muted: #414845;
+  --chart-grid: #333937;
+  --chart-track: #2a2f2c;
+
+  --shadow-popup: 0 8px 24px rgb(0 0 0 / 48%), 0 1px 3px rgb(0 0 0 / 40%);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 20%);
+  --shadow-spine: 1px 0 0 rgb(0 0 0 / 30%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion: 1ms;
+    --motion-slow: 1ms;
+  }
+}

@@ -8,4 +8,10 @@ __pycache__
 data/uploads/*
 data/jobs/*
 data/outputs/*
+data/product-validation
 
+# The host's node_modules is built for the host OS. Copying it into the image
+# overwrites the one `npm ci` just built there, leaving Windows shims that look
+# for node.exe. The build must install its own.
+frontend/node_modules
+frontend/dist

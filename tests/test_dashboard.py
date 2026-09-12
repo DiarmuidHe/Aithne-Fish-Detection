@@ -23,24 +23,82 @@ class FailingRunner:
         raise VIAMERunnerError("VIAME model initialization failed")
 
 
-def test_dashboard_and_static_assets_are_served(client):
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "Upload an underwater video" in response.text
-    assert "Show low-confidence tracks" in response.text
-    assert "Generate annotated video" in response.text
+@pytest.fixture
+def built_frontend(test_settings):
+    """A stand-in for `npm run build`, so serving can be tested without Node."""
 
-    css = client.get("/static/dashboard.css")
-    javascript = client.get("/static/dashboard.js")
-    assert css.status_code == 200
-    assert "@media (max-width: 820px)" in css.text
-    assert javascript.status_code == 200
-    assert 'apiRequest("/system/status")' in javascript.text
-    assert 'includes(video.processing_status)' in javascript.text
+    dist = test_settings.frontend_dist
+    (dist / "assets").mkdir(parents=True, exist_ok=True)
+    (dist / "index.html").write_text(
+        '<!doctype html><html><head><script type="module" '
+        'src="/static/app/assets/index-abc123.js"></script></head>'
+        '<body><div id="root"></div></body></html>',
+        encoding="utf-8",
+    )
+    (dist / "assets" / "index-abc123.js").write_text("console.log('app')", encoding="utf-8")
+    return dist
+
+
+def test_dashboard_and_static_assets_are_served(client, built_frontend):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<div id="root">' in response.text
+    assert "/static/app/assets/index-abc123.js" in response.text
+
+    bundle = client.get("/static/app/assets/index-abc123.js")
+    assert bundle.status_code == 200
+    assert bundle.headers["content-type"].startswith("text/javascript")
+    assert "immutable" in bundle.headers["cache-control"]
+
+
+def test_client_routes_fall_back_to_the_app_shell(client, built_frontend):
+    for route in ["/library", "/library/6f0a9b2c-0000-0000-0000-000000000000", "/review", "/live"]:
+        response = client.get(route)
+        assert response.status_code == 200, route
+        assert '<div id="root">' in response.text, route
+
+
+def test_a_missing_static_asset_is_not_the_app_shell(client, built_frontend):
+    missing_bundle = client.get("/static/app/assets/not-there.js")
+    missing_legacy = client.get("/static/not-there.css")
+
+    assert missing_bundle.status_code == 404
+    assert missing_legacy.status_code == 404
+    assert "<div id=" not in missing_bundle.text
+
+
+def test_the_api_and_its_docs_survive_the_spa_fallback(client, built_frontend):
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/docs").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
+    assert client.get("/videos").status_code == 200
+    # An unknown path under an API prefix is a 404, not a page of HTML.
+    assert client.get("/analytics/nope").status_code == 404
+    assert client.get("/live/nope").status_code == 404
+    # `/live` is the client route; the API only ever owns paths beneath it.
+    assert '<div id="root">' in client.get("/live").text
+
+
+def test_the_shell_says_what_to_do_when_the_bundle_is_missing(client):
+    response = client.get("/library")
+
+    assert response.status_code == 200
+    assert "has not been built" in response.text
+    assert "npm run build" in response.text
+
+
+def test_the_legacy_dashboard_is_still_available_until_parity_is_signed_off(client):
+    page = client.get("/legacy")
+
+    assert page.status_code == 200
+    assert "Upload an underwater video" in page.text
+    assert "Show low-confidence tracks" in page.text
+    assert client.get("/static/dashboard.js").status_code == 200
 
 
 def test_dashboard_offers_cropped_clips_of_individual_fish(client):
-    page = client.get("/").text
+    page = client.get("/legacy").text
     assert "Generate fish clips" in page
     assert "Individual fish clips" in page
     assert "Show cropped clip of this fish" in page

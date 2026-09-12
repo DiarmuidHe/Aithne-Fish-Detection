@@ -1,0 +1,389 @@
+.detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+/* Marks footage this system recorded itself, rather than a file someone uploaded. */
+.badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.metaDot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--hairline-strong);
+  flex: none;
+}
+
+.metaValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.callout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-left: 3px solid var(--status-processing);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  background: var(--status-processing-bg);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.calloutError {
+  border-left-color: var(--status-failed);
+  background: var(--status-failed-bg);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+.panelFlush {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* --- Summary --------------------------------------------------------------
+ * The run's headline figures are one strip divided by hairline gaps, not six
+ * small cards. The dividers are the container's ground showing through, so a
+ * strip that wraps never grows a stray rule at the start of a row.
+ */
+
+.figures {
+  display: grid;
+  /* Six, three or two: counts that divide the six figures evenly, so the
+     strip never ends on a lone stretched cell. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-raised);
+}
+
+.figureValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-2xl);
+  letter-spacing: -0.02em;
+}
+
+.figureValue[data-absent] {
+  font-family: var(--font-text);
+  font-size: var(--text-base);
+  line-height: var(--leading-2xl);
+  font-weight: var(--weight-normal);
+  color: var(--ink-muted);
+}
+
+/* The label reads first, so it sits above the figure and is tracked out. */
+.figureLabel {
+  order: -1;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  /* Two short lines beat one truncated one; these labels name the figure. */
+  text-wrap: balance;
+}
+
+.provenance {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4) var(--space-6);
+}
+
+.provenanceTerm {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.provenanceValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exportRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- Tracks --------------------------------------------------------------- */
+
+.trackToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.trackNote {
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+  flex: none;
+}
+
+.trackTableWrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.trackCategories {
+  display: inline-flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.categoryTag {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.categoryTag[data-category='borderline'],
+.categoryTag[data-category='disputed'] {
+  color: var(--status-flagged);
+}
+
+.trackLink {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Media ------------------------------------------------------------------
+ * Annotated footage and fish clips get the darker band ground: underwater
+ * frames are dark, and a white mat around every one of them is what made this
+ * tab read as a grid of cards rather than as evidence.
+ */
+
+.player {
+  width: 100%;
+  max-height: 60vh;
+  background: var(--media-well);
+  border-radius: var(--radius-panel);
+}
+
+.mediaPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--band);
+  min-height: 100%;
+}
+
+.mediaNote {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+/* --- Inspector ------------------------------------------------------------ */
+
+.inspector {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-6);
+}
+
+.inspectorMedia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.observationScroll {
+  max-height: 46vh;
+}
+
+@media (max-width: 1240px) {
+  .figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mediaPanel {
+    padding: var(--space-4);
+  }
+
+  .inspector {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel {
+    padding: var(--space-4);
+  }
+
+  .header {
+    padding: var(--space-4);
+  }
+
+  .trackToolbar,
+  .trackNote {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}
+
+/* The Fishial cell: the answer, with the action beside it rather than under it. */
+.fishialCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+/*
+ * The fish preview. Sized to the row it sits in: a square that reads at a glance
+ * without making the table taller than a dense table should be. The image is the
+ * content, so there is no card and no border around it — only the well behind it,
+ * which is what a crop with letterboxing needs to sit on.
+ */
+.previewButton,
+.previewEmpty {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-control);
+  background: var(--media-well);
+  overflow: hidden;
+}
+
+.previewButton {
+  padding: 0;
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+}
+
+.previewButton:hover,
+.previewButton:focus-visible {
+  border-color: var(--hairline-strong);
+}
+
+.previewButton img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.previewEmpty {
+  border: 1px dashed var(--hairline);
+  background: var(--surface-sunken);
+}
+
+/* Being generated: a quiet pulse rather than a spinner per row. */
+.previewEmpty[data-pending] {
+  border-style: solid;
+  animation: previewPending 1.6s ease-in-out infinite;
+}
+
+@keyframes previewPending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .previewEmpty[data-pending] {
+    animation: none;
+  }
+}

@@ -1,0 +1,186 @@
+/*
+ * Media tiles: footage first, chrome last.
+ *
+ * There is no card here. The frame carries the image, the caption is two lines
+ * of text sitting on whatever ground the grid was placed on, and the only
+ * permanent mark a tile can take is a review rule along the top of the frame.
+ */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: var(--space-5) var(--space-4);
+  min-width: 0;
+}
+
+/* A gallery that is the whole page can afford bigger evidence. */
+.grid[data-size='large'] {
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: var(--space-6) var(--space-5);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.frame {
+  position: relative;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  /* Footage sits on the marine ground in both themes; a white mat would blow
+     out the dark underwater frames these cameras actually produce. */
+  background: var(--chrome);
+  /* The frame is the tile's edge. Adding a border would rebuild the card. */
+  outline: 1px solid var(--hairline);
+  outline-offset: -1px;
+  transition: outline-color var(--motion-fast) var(--ease-out);
+}
+
+.tile:hover .frame,
+.tile:focus-within .frame {
+  outline-color: var(--hairline-strong);
+}
+
+.frame > video,
+.frame > img {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--ratio, 4 / 3);
+  object-fit: cover;
+  background: var(--chrome);
+}
+
+/*
+ * The review rule. Two pixels of muted amber across the top of the frame says
+ * "somebody has to look at this" without printing a word over the fish.
+ */
+.tile[data-flag='flagged'] .frame::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--status-flagged-edge);
+}
+
+/* --- Actions ----------------------------------------------------------------
+ * Out of the way until wanted. Hidden tiles keep their actions reachable by
+ * keyboard, so focus brings them back the same way hover does.
+ */
+
+.actions {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  gap: var(--space-1);
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--media-overlay);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.tile:hover .actions,
+.tile:focus-within .actions {
+  opacity: 1;
+}
+
+/* The pointer is not the only way in; a tabbed action must be visible. */
+.actions:focus-within {
+  opacity: 1;
+}
+
+.actions a,
+.actions button {
+  color: var(--media-ink);
+}
+
+/* --- Caption ---------------------------------------------------------------- */
+
+.caption {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.title {
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle {
+  flex: none;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+}
+
+/*
+ * The status word, with a dot in front of it. Small, on the page ground, no
+ * tinted pill — the rule on the frame has already done the flagging.
+ */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink-muted);
+}
+
+.flagDot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+.tile[data-flag='flagged'] .flagDot {
+  background: var(--status-flagged-edge);
+}
+
+.tile[data-flag='named'] .flagDot {
+  background: var(--status-completed-edge);
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footnote {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink-muted);
+}
+
+/* Touch and keyboard-only users never hover, so the actions stay put there. */
+@media (hover: none) {
+  .actions {
+    opacity: 1;
+  }
+}

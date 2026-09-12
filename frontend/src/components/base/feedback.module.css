@@ -1,0 +1,378 @@
+/* Status, progress, empty states, skeletons, separators, toolbars. */
+
+.status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  /* Colour is never the only carrier: the word is always present. */
+  color: var(--status-uploaded);
+  background: var(--status-uploaded-bg);
+}
+
+.status[data-status='queued'] {
+  color: var(--status-queued);
+  background: var(--status-queued-bg);
+}
+
+.status[data-status='processing'] {
+  color: var(--status-processing);
+  background: var(--status-processing-bg);
+}
+
+.status[data-status='completed'] {
+  color: var(--status-completed);
+  background: var(--status-completed-bg);
+}
+
+.status[data-status='failed'] {
+  color: var(--status-failed);
+  background: var(--status-failed-bg);
+}
+
+.status[data-status='flagged'],
+.status[data-status='awaiting'] {
+  color: var(--status-flagged);
+  background: var(--status-flagged-bg);
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* Queued and processing carry a travelling hairline instead of a spinner. */
+.status[data-active]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 40%;
+  height: 1.5px;
+  background: currentColor;
+  opacity: 0.7;
+  animation: status-sweep 1600ms var(--ease-in-out) infinite;
+}
+
+@keyframes status-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* --- Progress and meter --------------------------------------------------- */
+
+.progressRoot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 160px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.progressLabel {
+  font-weight: var(--weight-medium);
+}
+
+.progressValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.progressTrack {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--chart-track);
+  overflow: hidden;
+  /* An inset hairline gives the track an edge, so an empty bar still reads. */
+  box-shadow: inset 0 0 0 1px rgb(22 38 25 / 5%);
+}
+
+.progressRoot[data-size='small'] .progressTrack {
+  height: 4px;
+}
+
+.progressIndicator {
+  position: relative;
+  height: 100%;
+  border-radius: 3px;
+  /*
+   * A bar that fills is the one element whose length is its meaning, so it
+   * carries the whole ramp: pale where the work started, deep at the head.
+   */
+  background-color: var(--chart-1);
+  background-image: var(--gradient-meter);
+  overflow: hidden;
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+/*
+ * A filling bar is also moving: a slow diagonal texture travels along the
+ * filled part, so a bar that has stalled looks different from one that is
+ * merely slow.
+ */
+.progressIndicator::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    115deg,
+    rgb(255 255 255 / 10%) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgb(255 255 255 / 10%) 50%,
+    rgb(255 255 255 / 10%) 75%,
+    transparent 75%
+  );
+  background-size: 14px 14px;
+  animation: progress-stripes 900ms linear infinite;
+}
+
+@keyframes progress-stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 14px 0;
+  }
+}
+
+/* --- Indeterminate loading band ------------------------------------------- */
+
+.loadingBar {
+  width: 100%;
+}
+
+.loadingBarTrack {
+  position: relative;
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: var(--chart-track);
+  overflow: hidden;
+}
+
+.loadingBarIndicator {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, var(--chart-1), transparent);
+  animation: loading-sweep 1200ms var(--ease-in-out) infinite;
+}
+
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+.meterRoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 90px;
+}
+
+.meterTrack {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  min-width: 40px;
+  border-radius: 2px;
+  background: var(--chart-track);
+  overflow: hidden;
+}
+
+.meterIndicator {
+  height: 100%;
+  background: var(--ink-faint);
+  transition: width var(--motion) var(--ease-out);
+}
+
+.meterAccepted .meterIndicator {
+  background: var(--chart-1);
+}
+
+.meterValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  width: 5ch;
+  text-align: right;
+}
+
+/* --- Skeletons ------------------------------------------------------------ */
+
+/*
+ * A sweep, not a blink. The band travels left to right across the placeholder
+ * so a loading region reads as one surface rather than a set of flashing parts.
+ */
+.skeleton {
+  position: relative;
+  background: var(--surface-active);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 45%) 50%,
+    transparent
+  );
+  animation: skeleton-sweep 1500ms var(--ease-in-out) infinite;
+}
+
+:root[data-theme='dark'] .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 8%) 50%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 8%) 50%, transparent);
+  }
+}
+
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Rows arrive in sequence, 45 ms apart, so the list builds downward. */
+.skeletonRow {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  animation: settle-in var(--motion) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after,
+  .loadingBarIndicator,
+  .progressIndicator::after,
+  .status[data-active]::after {
+    animation: none;
+  }
+
+  .skeletonRow {
+    animation: none;
+  }
+
+  .status[data-active]::after {
+    display: none;
+  }
+}
+
+/* --- Empty and error states ----------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-6);
+  max-width: 62ch;
+}
+
+.emptyTitle {
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
+  font-weight: var(--weight-strong);
+}
+
+.emptyBody {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--ink-muted);
+}
+
+.panelError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--status-failed);
+  border-left-width: 3px;
+  border-radius: var(--radius-control);
+  background: var(--status-failed-bg);
+  color: var(--ink);
+}
+
+.panelErrorTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-strong);
+  color: var(--status-failed);
+}
+
+/* --- Separator and toolbar ------------------------------------------------ */
+
+.separator {
+  background: var(--hairline);
+  border: 0;
+  flex: none;
+}
+
+.separator[data-orientation='horizontal'] {
+  height: 1px;
+  width: 100%;
+}
+
+.separator[data-orientation='vertical'] {
+  width: 1px;
+  align-self: stretch;
+  min-height: 18px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

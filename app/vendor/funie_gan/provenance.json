@@ -1,0 +1,10 @@
+{
+  "model_id": "FUnIE-GAN/PyTorch/8f934c834c94e007b00866186b9ee624dc2b7b69",
+  "commit": "8f934c834c94e007b00866186b9ee624dc2b7b69",
+  "architecture": "PyTorch/nets/funiegan.py (generator and UNet blocks only)",
+  "filename": "funie_generator.pth",
+  "url": "https://raw.githubusercontent.com/xahidbuffon/FUnIE-GAN/8f934c834c94e007b00866186b9ee624dc2b7b69/PyTorch/models/funie_generator.pth",
+  "sha256": "e4fcb50e03868f1683c244b1c125def30df335ec43d9bb001b8700c03b8f2bd6",
+  "bytes": 28105229,
+  "license": "MIT; Copyright (c) [2019] [Md Jahidul Islam]"
+}

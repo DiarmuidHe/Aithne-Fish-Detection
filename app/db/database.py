@@ -36,6 +36,18 @@ def get_db() -> Generator:
         db.close()
 
 
+def session_factory_for(db) -> sessionmaker:
+    """A session factory on the same engine as this request's session.
+
+    Work that outlives a response cannot borrow the request's session, which is
+    closed as soon as the response is sent, but must still reach the same database
+    - including the one a test substitutes for it.
+    """
+
+    return sessionmaker(bind=db.get_bind(), autoflush=False, autocommit=False,
+                        expire_on_commit=False)
+
+
 def init_db() -> None:
     from app.db import models  # noqa: F401
 

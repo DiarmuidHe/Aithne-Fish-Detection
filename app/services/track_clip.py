@@ -209,6 +209,16 @@ def get_clip_path(track: FishTrack, settings: Settings) -> Path:
     return clip_path
 
 
+def count_track_clips(video_id: uuid.UUID, settings: Settings) -> int:
+    """Count clips already cut for a video by listing its directory, not per track."""
+
+    directory = video_clip_directory(video_id, settings)
+    try:
+        return sum(1 for entry in os.scandir(directory) if entry.name.endswith(".mp4"))
+    except (OSError, ValueError):
+        return 0
+
+
 def remove_video_clips(video_id: uuid.UUID, settings: Settings) -> None:
     """Drop cached clips whose tracks are about to be replaced by a new run."""
 

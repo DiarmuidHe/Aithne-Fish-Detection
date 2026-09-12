@@ -104,8 +104,8 @@ def resolve_stream(url: str, settings: Settings, label: str | None = None, clien
             [sys.executable, "-m", "yt_dlp", "--no-playlist", "--no-warnings",
              "--socket-timeout", str(int(settings.live_read_timeout_seconds)),
              # Live sources publish video-only renditions; audio is discarded downstream,
-             # so accept them and prefer the 720p capture size over a larger rendition.
-             "-f", "bv*[height<=?720][protocol*=m3u8]/bv*[protocol*=m3u8]/b[protocol*=m3u8]/bv*/b",
+             # so accept them and retain detail up to the configured capture height.
+             "-f", f"bv*[height<=?{settings.live_capture_height}][protocol*=m3u8]/bv*[protocol*=m3u8]/b[protocol*=m3u8]/bv*/b",
              "--get-url", url],
             capture_output=True, text=True, check=False,
             timeout=settings.live_read_timeout_seconds * 2,
@@ -142,7 +142,9 @@ class SegmentCapture:
                 ["ffmpeg", "-nostdin", "-loglevel", "error", "-y",
                  "-rw_timeout", str(int(settings.live_read_timeout_seconds * 1_000_000)),
                  "-i", url, "-map", "0:v:0", "-an", "-vf",
-                 f"fps={settings.live_fps},scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
+                 f"fps={settings.live_fps},scale=w='min(iw,{settings.live_capture_width})':"
+                 f"h='min(ih,{settings.live_capture_height})':"
+                 "force_original_aspect_ratio=decrease:force_divisible_by=2",
                  "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
                  "-force_key_frames", f"expr:gte(t,n_forced*{settings.live_segment_seconds})",
                  "-f", "segment", "-segment_time", str(settings.live_segment_seconds),

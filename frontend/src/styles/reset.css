@@ -1,0 +1,87 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* Scrollbars are part of the chrome, not a grey the OS chose for us. */
+  scrollbar-color: var(--hairline-strong) transparent;
+  scrollbar-width: thin;
+  /* Base UI needs this for iOS 26+ Safari backdrops to cover after scrolling. */
+  position: relative;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-text);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+dl,
+dd,
+ul,
+ol {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* One focus treatment for the whole app, on everything we author. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-control);
+}
+
+/* Selected text takes a pale wash of the interaction blue, so ink reads through. */
+::selection {
+  background: var(--selection);
+}
+
+[hidden] {
+  display: none !important;
+}

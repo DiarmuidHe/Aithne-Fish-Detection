@@ -26,9 +26,20 @@ from functools import partial
 from sqlalchemy import select, update
 
 from app.db.models import LiveFishTrack, LiveMonitorSession, utc_now
+from app.services.fish_enhancement import (
+    EnhancementError,
+    enhance_crop,
+    failure_metadata,
+    validate_enhancement,
+)
 from app.services.fishial import FishialClient, FishialError
 from app.services.live_monitor import scratch_path
-from app.services.species_quality import consensus_outlook, track_quality
+from app.services.species_quality import (
+    stop_reason,
+    submitted_count,
+    track_quality,
+    verdict,
+)
 from app.services.species_region import filter_species
 
 logger = logging.getLogger(__name__)
@@ -38,10 +49,11 @@ SELECTED = ("pending", "ready", "submitted")
 
 
 class SpeciesIdentifier:
-    def __init__(self, db, session, settings, client=None):
+    def __init__(self, db, session, settings, client=None, enhancer=None):
         self.db, self.session, self.settings = db, session, settings
         self.client = client
         self._owns_client = client is None
+        self.enhancer = enhancer or enhance_crop
 
     def close(self):
         if self._owns_client and self.client is not None:
@@ -192,26 +204,7 @@ class SpeciesIdentifier:
     def _stop_reason(self, frames, remaining) -> str | None:
         """Whether to stop before buying another frame for this track."""
 
-        limit = self.settings.fishial_max_empty_responses
-        if limit:
-            empty = 0
-            for frame in reversed(frames):
-                if not frame.get("attempts"):
-                    continue
-                if not frame.get("empty"):
-                    break
-                empty += 1
-            # Once a track starts coming back empty, the remaining frames of the same
-            # track are near-certain to come back empty too - on SmartBay 3 every
-            # consecutive frame of a declining track declined. Stop paying for them.
-            if empty >= limit:
-                return "classifier returned no candidates"
-        outlook = consensus_outlook(frames, remaining, self.settings)
-        if outlook == "decided":
-            return "decided"
-        if outlook == "unreachable":
-            return "consensus unreachable"
-        return None
+        return stop_reason(frames, remaining, self.settings)
 
     def _vote(self, record, prediction):
         """Turn one response into a vote, or record why it abstained."""
@@ -273,6 +266,15 @@ class SpeciesIdentifier:
                 # Only server-written manifest entries resolve paths. No API body or
                 # client-supplied path/URL is accepted here.
                 image = (directory / f"{int(number):012d}.jpg").read_bytes()
+                try:
+                    enhanced = self.enhancer(image, self.settings)
+                    validate_enhancement(enhanced, image, self.settings)
+                except Exception:  # noqa: BLE001 - injected enhancers must also redact errors
+                    raise EnhancementError() from None
+                record["preprocessing"] = enhanced.metadata
+                image = enhanced.image
+                track.fishial_votes_json = json.dumps(audit)
+                self.db.commit()  # Pre-send provenance precedes even authentication/reservation.
                 if self.client is None:
                     self.client = FishialClient(self.settings)
                 expected = staged_frame.get("expected_box")
@@ -285,6 +287,9 @@ class SpeciesIdentifier:
                     prediction = self.client.identify(image, expected)
                 record["raw"] = prediction.raw
                 self._vote(record, prediction)
+            except EnhancementError:
+                record["reason"] = "preprocessing failed"
+                record["preprocessing"] = failure_metadata(image, self.settings)
             except FishialError as exc:
                 record["reason"] = exc.reason
             except Exception:  # noqa: BLE001 - one bad crop/provider result must only abstain
@@ -307,25 +312,18 @@ class SpeciesIdentifier:
                 self.db.refresh(self.session)
                 break
         frames = audit["frames"]
-        votes = Counter(f["species"] for f in frames if f.get("voted"))
-        audit["tally"] = dict(votes)
+        audit["tally"] = dict(Counter(f["species"] for f in frames if f.get("voted")))
         # Each attempted frame contributes to the denominator once, including
         # failed/ambiguous frames. Retries do not manufacture extra votes.
-        submitted = sum(bool(f.get("attempts")) for f in frames)
-        audit["submitted_frames"] = submitted
-        if votes:
-            winner, count = votes.most_common(1)[0]
-            mean = sum(f["score"] for f in frames if f.get("voted") and f["species"] == winner) / count
-            unique_winner = sum(value == count for value in votes.values()) == 1
-            if (unique_winner and count >= self.settings.fishial_min_votes
-                    and submitted >= self.settings.fishial_min_frames_to_vote
-                    and count / submitted >= self.settings.fishial_vote_ratio
-                    and mean >= self.settings.fishial_min_species_score):
-                track.fishial_species, track.fishial_species_confidence = winner, mean
-                self._complete(track, audit, "identified", None, directory)
-                return
+        audit["submitted_frames"] = submitted_count(frames)
+        winner, mean = verdict(frames, self.settings)
+        if winner is not None:
+            track.fishial_species, track.fishial_species_confidence = winner, mean
+            self._complete(track, audit, "identified", None, directory)
+            return
         exhausted = any(f.get("reason") == "budget exhausted" for f in frames)
-        state = "review_required" if exhausted or any(f.get("succeeded") for f in frames) else "error"
+        state = "review_required" if exhausted or any(
+            f.get("succeeded") or f.get("reason") == "preprocessing failed" for f in frames) else "error"
         # These abstentions are different operational problems and must never
         # collapse into one message: "insufficient clear frames", "below quality
         # floor", "consensus unreachable", "classifier returned no candidates",

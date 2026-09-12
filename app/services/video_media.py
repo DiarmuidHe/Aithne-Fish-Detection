@@ -39,6 +39,13 @@ def load_cv2() -> Any:
     return cv2
 
 
+def check_live_video_runtime() -> None:
+    """Fail before claiming a camera session if this OpenCV cannot read MP4s."""
+    cv2 = load_cv2()
+    if not cv2.videoio_registry.hasBackend(cv2.CAP_FFMPEG):
+        raise MediaDependencyError("Live monitoring requires OpenCV with FFmpeg video decoding")
+
+
 def open_video_writer(
     cv2: Any, output_path: Path, fps: float, width: int, height: int
 ) -> Any | None:

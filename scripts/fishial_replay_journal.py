@@ -8,13 +8,19 @@ from app.services.fishial import FishialError
 class ReplayJournal:
     def __init__(self, path, specification):
         self.db = sqlite3.connect(path, timeout=30)
+        spec = json.dumps(specification, sort_keys=True)
+        # Inspect an existing frozen spec before any schema/config write.
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='config'").fetchone():
+            stored = self.db.execute("SELECT spec FROM config WHERE id=1").fetchone()
+            if stored and stored[0] != spec:
+                self.close()
+                raise SystemExit("Replay inputs/settings/budget changed; refusing to reuse this experiment")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY CHECK (id=1), spec TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS results (key TEXT PRIMARY KEY, result TEXT);
             CREATE TABLE IF NOT EXISTS attempts (id INTEGER PRIMARY KEY, key TEXT, retry INTEGER);
         """)
-        spec = json.dumps(specification, sort_keys=True)
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO config VALUES (1, ?)", (spec,))
         if self.db.execute("SELECT spec FROM config WHERE id=1").fetchone()[0] != spec:
@@ -34,11 +40,13 @@ class ReplayJournal:
             result = self.db.execute("INSERT OR IGNORE INTO results(key) VALUES (?)", (key,))
         return result.rowcount == 1
 
-    def reserve(self, key, retry):
+    def reserve(self, key, retry, *, holdback=0):
         try:
             self.db.execute("BEGIN IMMEDIATE")
             if self.spent >= self.ceiling:
                 raise FishialError("budget exhausted")
+            if retry and self.spent >= self.ceiling - holdback:
+                raise FishialError("retry limit reached")
             retries = self.db.execute("SELECT count(*) FROM attempts WHERE retry=1").fetchone()[0]
             if retry and retries >= self.max_retries:
                 raise FishialError("retry limit reached")

@@ -1,0 +1,941 @@
+/*
+ * The chrome: a dark forest rail on the left, a light application bar across
+ * the workspace, and route content below it. The rail and bar never scroll.
+ */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  height: 100%;
+  background: var(--surface);
+  /* Base UI portals stack above the page regardless of local z-index. */
+  isolation: isolate;
+  transition: grid-template-columns var(--motion) var(--ease-out);
+}
+
+.shell[data-collapsed] {
+  grid-template-columns: var(--rail-width-collapsed) minmax(0, 1fr);
+}
+
+/* --- The forest shell ----------------------------------------------------- */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--gradient-shell);
+  color: var(--chrome-ink);
+  box-shadow: var(--shadow-spine);
+  overflow: hidden;
+  /* The mark's eye is punched through to whatever sits behind it. */
+  --mark-eye: var(--chrome);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--appbar-height);
+  padding: 0 var(--space-3);
+  flex: none;
+  border-bottom: 1px solid var(--rail-hairline);
+}
+
+.brandLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+  color: var(--chrome-ink);
+  text-decoration: none;
+}
+
+.brandMark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: var(--chrome-accent);
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* The wordmark disappears with the rail, but the mark stays put. */
+  opacity: 1;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.brandName {
+  font-size: var(--text-sm);
+  line-height: 16px;
+  font-weight: var(--weight-strong);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
+.brandSub {
+  font-size: var(--text-2xs);
+  line-height: 14px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--chrome-ink-faint);
+  white-space: nowrap;
+}
+
+.collapseButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--chrome-ink-faint);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.collapseButton:hover {
+  background: var(--rail-hover);
+  color: var(--chrome-ink);
+}
+
+.collapseButton:focus-visible {
+  outline: 2px solid var(--chrome-accent);
+  outline-offset: 1px;
+}
+
+/* --- Rail navigation ------------------------------------------------------ */
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-2);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.navGroupLabel {
+  padding: 0 var(--space-2) var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--chrome-ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.navItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 34px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--chrome-ink-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.navItem:hover {
+  background: var(--rail-hover);
+  color: var(--chrome-ink);
+}
+
+.navItem:focus-visible {
+  outline: 2px solid var(--chrome-accent);
+  outline-offset: -2px;
+}
+
+.navItem[aria-current='page'] {
+  background: var(--rail-selected);
+  color: var(--chrome-ink);
+}
+
+/*
+ * The active marker grows out of the left edge rather than appearing: 3px of
+ * sage, 160 ms, and it is the only motion in the rail.
+ */
+.navItem::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 2px 2px 0;
+  background: var(--chrome-accent);
+  transform: translateY(-50%);
+  transition: height var(--motion) var(--ease-out);
+}
+
+.navItem[aria-current='page']::before {
+  height: 18px;
+}
+
+.navIcon {
+  display: flex;
+  flex: none;
+  width: 16px;
+  color: inherit;
+}
+
+.navItem[aria-current='page'] .navIcon {
+  color: var(--chrome-accent);
+}
+
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--chrome-ink-faint);
+}
+
+.navItem[aria-current='page'] .navCount {
+  color: var(--chrome-accent);
+}
+
+/* --- Rail footer: the one health line ------------------------------------- */
+
+.railFooter {
+  margin-top: auto;
+  padding: var(--space-2);
+  border-top: 1px solid var(--rail-hairline);
+  flex: none;
+}
+
+.health {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--chrome-ink-muted);
+  text-decoration: none;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.health:hover {
+  background: var(--rail-hover);
+}
+
+.healthDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chrome-status-failed);
+}
+
+.health[data-ready] .healthDot {
+  background: var(--chrome-status-completed);
+  /* A slow breath, so a glance at the rail says the worker is alive. */
+  animation: pulse-dot 2600ms var(--ease-in-out) infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chrome-status-completed) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+.healthText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.healthTitle {
+  font-size: var(--text-xs);
+  line-height: 15px;
+  font-weight: var(--weight-medium);
+  color: var(--chrome-ink);
+  white-space: nowrap;
+}
+
+.healthMeta {
+  font-size: var(--text-2xs);
+  line-height: 14px;
+  color: var(--chrome-ink-faint);
+  white-space: nowrap;
+}
+
+/* --- Collapsed rail -------------------------------------------------------- */
+
+.shell[data-collapsed] .brandText,
+.shell[data-collapsed] .navLabel,
+.shell[data-collapsed] .navCount,
+.shell[data-collapsed] .healthText {
+  opacity: 0;
+  width: 0;
+  flex: 0 0 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.shell[data-collapsed] .navGroupLabel {
+  height: 1px;
+  padding: 0;
+  margin-bottom: var(--space-1);
+  background: var(--rail-hairline);
+  color: transparent;
+}
+
+.shell[data-collapsed] .brand,
+.shell[data-collapsed] .navItem,
+.shell[data-collapsed] .health {
+  justify-content: center;
+  gap: 0;
+}
+
+.shell[data-collapsed] .collapseButton {
+  display: none;
+}
+
+/* --- Workspace ------------------------------------------------------------- */
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.appBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: var(--appbar-height);
+  padding: 0 var(--space-5);
+  flex: none;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.appBar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--brand-gradient);
+}
+
+.appBarTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.appBarHeading {
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-strong);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Where a route puts its breadcrumb, filename or record position. */
+.appBarContext {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.appBarContext:not(:empty)::before {
+  content: '';
+  width: 1px;
+  height: 14px;
+  flex: none;
+  background: var(--hairline-strong);
+}
+
+.appBarActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.appBarSlot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.appBarSlot:not(:empty)::after {
+  content: '';
+  width: 1px;
+  height: 18px;
+  background: var(--hairline);
+}
+
+/* --- The route progress hairline ------------------------------------------ */
+
+.routeProgress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.routeProgress[data-active] {
+  opacity: 1;
+}
+
+.routeProgressBar {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--chart-1) 30%,
+    var(--chart-1) 70%,
+    transparent
+  );
+  transform: translateX(-100%);
+}
+
+.routeProgress[data-active] .routeProgressBar {
+  animation: sweep 1100ms var(--ease-in-out) infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  /* Takes every pixel the bar leaves, so full-height routes fill the window. */
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* --- Page scaffolding ------------------------------------------------------ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.pageInner {
+  width: 100%;
+  max-width: var(--content-max);
+  padding: var(--space-5) var(--space-5) var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  animation: settle-in var(--motion) var(--ease-out) both;
+}
+
+.pageInner[data-width='full'] {
+  max-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pageInner {
+    animation: none;
+  }
+}
+
+.pageHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.pageTitle {
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
+  font-weight: var(--weight-strong);
+}
+
+.pageSubtitle {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--ink-muted);
+  max-width: 84ch;
+}
+
+/* --- Sections and panels --------------------------------------------------- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.sectionHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sectionTitle {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.sectionNote {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.panelHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.panelTitle {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-strong);
+}
+
+.panelNote {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.panelBody {
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.panelBody[data-flush] {
+  padding: 0;
+}
+
+/* --- Section bands ---------------------------------------------------------
+ * A band runs the full width of the workspace, past the page gutter, and
+ * changes the ground under a section. It is how a page gets a rhythm without
+ * every section becoming another bordered rectangle.
+ */
+
+.band {
+  /* Escape the page gutter so the ground reaches the workspace edges. */
+  margin-inline: calc(var(--space-5) * -1);
+  padding-inline: var(--space-5);
+  min-width: 0;
+}
+
+.band[data-tone='sunken'] {
+  padding-block: var(--space-6);
+  background: var(--band);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.bandHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+  /*
+   * The eyebrow sits on a rule that runs the width of the band. A section is
+   * announced by a line, the way a survey sheet is, not by a card header.
+   */
+  border-bottom: 1px solid var(--hairline);
+}
+
+.band[data-tone='sunken'] .bandHeader {
+  border-bottom-color: var(--hairline-strong);
+}
+
+.bandHeading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.bandLabel {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.bandNote {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.bandBody {
+  min-width: 0;
+}
+
+/* --- The status strip -------------------------------------------------------
+ * Every headline figure on one surface, divided by hairlines. Five figures on
+ * five cards is a dashboard; five figures on one instrument is a console.
+ *
+ * The dividers are 1px gaps showing the container's ground through, not
+ * borders on the cells. That way a strip that wraps to two rows never grows a
+ * stray rule at the start of the second row, and the horizontal and vertical
+ * dividers match without a single edge case.
+ */
+
+.metricRow {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 1px;
+  min-width: 0;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+/*
+ * The console strip belongs to the chrome family: the same ground as the rail,
+ * so the operational header reads as one continuous instrument wrapping the
+ * workspace rather than as a dark card dropped onto a light page.
+ */
+.metricRow[data-tone='console'] {
+  margin-inline: calc(var(--space-5) * -1);
+  margin-top: calc(var(--space-5) * -1);
+  background: var(--gradient-console);
+  color: var(--chrome-ink);
+  border: 0;
+  border-bottom: 1px solid var(--chrome-hairline);
+  border-radius: 0;
+}
+
+.metricCells {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 1px;
+  min-width: 0;
+  background: inherit;
+}
+
+/*
+ * On the strip the cells are cut out of the ramp rather than painted on it:
+ * transparent cells over a sage-tinted ground, so the 1px gaps are the only
+ * rules and the run of figures crosses one continuous colour.
+ */
+.metricRow[data-tone='console'] .metricCells {
+  background: var(--rail-hairline);
+}
+
+.metricAside {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-raised);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+}
+
+.metricRow[data-tone='console'] .metricAside {
+  background: transparent;
+  color: var(--chrome-ink-muted);
+  box-shadow: inset 1px 0 0 var(--rail-hairline);
+}
+
+.metric {
+  display: flex;
+  flex: 1 1 164px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-raised);
+  color: inherit;
+  text-decoration: none;
+}
+
+.metricRow[data-tone='console'] .metric {
+  background: transparent;
+  padding-block: var(--space-4);
+}
+
+.metric[data-placeholder] {
+  gap: var(--space-2);
+  opacity: 0.5;
+}
+
+/*
+ * A figure that links somewhere warms its cell and raises a water-coloured
+ * rule along the bottom. Nothing moves and nothing lifts.
+ */
+.metric[data-interactive] {
+  position: relative;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.metric[data-interactive]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--motion) var(--ease-out);
+}
+
+.metricRow[data-tone='console'] .metric[data-interactive]::after {
+  background: var(--chrome-accent);
+}
+
+.metric[data-interactive]:hover {
+  background: var(--surface-hover);
+}
+
+.metricRow[data-tone='console'] .metric[data-interactive]:hover {
+  background: var(--rail-hover);
+}
+
+.metric[data-interactive]:hover::after,
+.metric[data-interactive]:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.metric:focus-visible {
+  outline-offset: -3px;
+}
+
+.metricRow[data-tone='console'] .metric:focus-visible {
+  outline-color: var(--chrome-accent);
+}
+
+.metricLabel {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metricRow[data-tone='console'] .metricLabel {
+  color: var(--chrome-ink-faint);
+}
+
+.metricValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-2xl);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.metricRow[data-tone='console'] .metricValue {
+  color: var(--chrome-ink);
+}
+
+/*
+ * A figure with work behind it right now. Green because it is running, not
+ * blue: the number is a reading, and you cannot press it.
+ */
+.metricValue[data-tone='active'] {
+  color: var(--status-processing);
+}
+
+.metricRow[data-tone='console'] .metricValue[data-tone='active'] {
+  color: var(--chrome-accent);
+}
+
+.metricValue[data-tone='failed'] {
+  color: var(--status-failed);
+}
+
+.metricValue[data-tone='flagged'] {
+  color: var(--status-flagged);
+}
+
+/* The status hues have to clear the dark ground, so they run lighter there. */
+.metricRow[data-tone='console'] .metricValue[data-tone='failed'] {
+  color: var(--chrome-status-failed);
+}
+
+.metricRow[data-tone='console'] .metricValue[data-tone='flagged'] {
+  color: var(--chrome-status-flagged);
+}
+
+.metricMeta {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricRow[data-tone='console'] .metricMeta {
+  color: var(--chrome-ink-muted);
+}
+
+/* --- Narrow widths --------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+  .shell,
+  .shell[data-collapsed] {
+    grid-template-columns: var(--rail-width-collapsed) minmax(0, 1fr);
+  }
+
+  .brandText,
+  .navLabel,
+  .navCount,
+  .healthText,
+  .collapseButton {
+    opacity: 0;
+    width: 0;
+    flex: 0 0 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .navGroupLabel {
+    height: 1px;
+    padding: 0;
+    margin-bottom: var(--space-1);
+    background: var(--rail-hairline);
+    color: transparent;
+  }
+
+  .brand,
+  .navItem,
+  .health {
+    justify-content: center;
+    gap: 0;
+  }
+
+  .appBar {
+    padding: 0 var(--space-3);
+  }
+
+  .appBarContext {
+    display: none;
+  }
+
+  .pageInner {
+    padding: var(--space-4) var(--space-4) var(--space-10);
+    gap: var(--space-5);
+  }
+
+  .band {
+    margin-inline: calc(var(--space-4) * -1);
+    padding-inline: var(--space-4);
+  }
+
+  .metricRow[data-tone='console'] {
+    margin-inline: calc(var(--space-4) * -1);
+    margin-top: calc(var(--space-4) * -1);
+  }
+}

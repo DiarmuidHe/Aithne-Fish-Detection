@@ -1,0 +1,135 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  /* LinkButton renders an <a>, which would otherwise arrive underlined. */
+  text-decoration: none;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.button:active:not(:disabled) {
+  background: var(--surface-active);
+}
+
+.button:disabled {
+  color: var(--ink-faint);
+  border-color: var(--hairline);
+  cursor: not-allowed;
+}
+
+/*
+ * The one dominant action in a group. A flat fill, because a filled button is
+ * a target and not a surface: the gradient it used to carry read as decoration
+ * the moment the colour started meaning "you can press this".
+ */
+.primary {
+  background-color: var(--accent);
+  border-color: var(--accent-hover);
+  color: var(--accent-ink);
+}
+
+.primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.primary:active:not(:disabled) {
+  background-color: var(--accent-active);
+  border-color: var(--accent-active);
+}
+
+.primary:disabled {
+  background-color: var(--surface-sunken);
+  border-color: var(--hairline);
+  color: var(--ink-faint);
+}
+
+.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+.quiet:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+/*
+ * Destructive, and outlined rather than filled: a red slab sitting in a
+ * toolbar reads as an alarm the operator has to keep dismissing. It commits to
+ * the fill only under the pointer, at the moment the press is actually likely.
+ */
+.danger {
+  border-color: var(--status-failed-edge);
+  color: var(--status-failed);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--status-failed-edge);
+  border-color: var(--status-failed-edge);
+  color: #ffffff;
+}
+
+.danger:active:not(:disabled) {
+  background: var(--status-failed);
+  border-color: var(--status-failed);
+  color: #ffffff;
+}
+
+.danger:disabled {
+  border-color: var(--hairline);
+  color: var(--ink-faint);
+}
+
+.small {
+  height: 26px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+}
+
+.iconOnly {
+  width: var(--control-height);
+  padding: 0;
+}
+
+.small.iconOnly {
+  width: 26px;
+}
+
+.link {
+  border: 0;
+  background: none;
+  height: auto;
+  padding: 0;
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+.link:hover:not(:disabled) {
+  background: none;
+  color: var(--accent-hover);
+}

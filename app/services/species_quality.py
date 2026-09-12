@@ -239,6 +239,143 @@ def consensus_outlook(frames: list[dict], remaining: int, settings) -> str:
     return "unreachable"
 
 
+def stop_reason(frames: list[dict], remaining: int, settings) -> str | None:
+    """Why to stop before buying another frame for this fish, or ``None`` to continue.
+
+    ``remaining`` is how many further frames the caller could still send.
+    """
+
+    limit = settings.fishial_max_empty_responses
+    if limit:
+        empty = 0
+        for frame in reversed(frames):
+            if not frame.get("attempts"):
+                continue
+            if not frame.get("empty"):
+                break
+            empty += 1
+        # Once a track starts coming back empty, the remaining frames of the same
+        # track are near-certain to come back empty too - on SmartBay 3 every
+        # consecutive frame of a declining track declined. Stop paying for them.
+        if empty >= limit:
+            return "classifier returned no candidates"
+    outlook = consensus_outlook(frames, remaining, settings)
+    if outlook == "decided":
+        return "decided"
+    if outlook == "unreachable":
+        return "consensus unreachable"
+    return None
+
+
+def verdict(frames: list[dict], settings) -> tuple[str | None, float | None]:
+    """The species a completed frame set agrees on, and its mean winning score.
+
+    ``(None, None)`` when the consensus rule is not satisfied. This is the single
+    definition of "identified" - the live pass, the operator-requested pass and
+    :func:`consensus_outlook` must never drift apart on what counts as agreement.
+    """
+
+    votes = tally(frames)
+    if not votes:
+        return None, None
+    counts = {name: len(scores) for name, scores in votes.items()}
+    leader = max(counts, key=lambda name: (counts[name], sum(votes[name])))
+    count = counts[leader]
+    runner_up = max((value for name, value in counts.items() if name != leader), default=0)
+    mean = sum(votes[leader]) / count
+    if _consensus_holds(count, runner_up, submitted_count(frames), mean, settings):
+        return leader, mean
+    return None, None
+
+
+def is_clear_frame(cv2, frame, box, confidence, settings) -> bool:
+    """Safety floor only: reject frames that are genuinely unusable.
+
+    This is NOT selection. The previous 0.70 confidence / 96 px pair sat above the
+    90th percentile of both measurements on both reference cameras and rejected
+    96.8% (Coral City) and 85.9% (SmartBay 3) of detections conjunctively, which
+    is why no track ever reached ``fishial_min_frames_to_vote``. Selection is the
+    ranking by :func:`frame_score`; this only excludes junk.
+    """
+
+    height, width = frame.shape[:2]
+    x1, y1, x2, y2 = box
+    if not all(math.isfinite(v) for v in (*box, confidence)):
+        return False
+    if (not settings.fishial_min_frame_confidence <= confidence <= 1
+            or min(x2 - x1, y2 - y1) < settings.fishial_min_crop_pixels
+            # A fish crossing the frame edge is truncated, so the crop cannot show
+            # the whole animal. That is a correctness floor, not a quality one.
+            or min(x1, y1, width - 1 - x2, height - 1 - y2) < settings.fishial_edge_margin_pixels):
+        return False
+    if settings.fishial_blur_min_variance:
+        crop = frame[math.floor(y1):math.ceil(y2), math.floor(x1):math.ceil(x2)]
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        if cv2.Laplacian(gray, cv2.CV_64F).var() < settings.fishial_blur_min_variance:
+            return False
+    return True
+
+
+def crop_measures(cv2, frame, box, confidence) -> dict:
+    """Per-frame measurements the ranker and the selector both need.
+
+    Computed once while the frame is in hand, then persisted into the staged or
+    selected audit entry, so nothing has to re-decode pixels later.
+    """
+
+    height, width = frame.shape[:2]
+    x1, y1, x2, y2 = box
+    crop = frame[max(0, math.floor(y1)):min(height, math.ceil(y2)),
+                 max(0, math.floor(x1)):min(width, math.ceil(x2))]
+    measures = {"confidence": float(confidence),
+                "short_side": float(min(x2 - x1, y2 - y1)),
+                "sharpness": 0.0, "luminance": 0.0, "contrast": 0.0, "colorfulness": 0.0}
+    if crop.size == 0:
+        return measures
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    measures["sharpness"] = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    lightness = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)[:, :, 0].astype("float64")
+    measures["luminance"] = float(lightness.mean())
+    measures["contrast"] = float(lightness.std())  # RMS contrast of L
+    blue, green, red = (channel.astype("float64") for channel in cv2.split(crop))
+    # Hasler-Susstrunk colourfulness: dim green water scores near zero, which is
+    # exactly the domain mismatch Fishial's classifier appears to dislike.
+    rg, yb = red - green, 0.5 * (red + green) - blue
+    measures["colorfulness"] = float(
+        math.hypot(rg.std(), yb.std()) + 0.3 * math.hypot(rg.mean(), yb.mean()))
+    return measures
+
+
+def crop_for_fishial(cv2, frame, box, settings):
+    """``(jpeg, expected_box, crop_size)`` for one detection, or ``None`` to skip.
+
+    The crop is rectangular and at the source resolution: never the annotated view
+    and never the letterboxed gallery spool. ``expected_box`` is the detection's
+    position *within the crop*, normalised, which is what lets the adapter tell our
+    fish apart from a neighbour when the response carries several objects.
+    """
+
+    x1, y1, x2, y2 = box
+    height, width = frame.shape[:2]
+    dx = (x2 - x1) * (settings.fishial_crop_margin - 1) / 2
+    dy = (y2 - y1) * (settings.fishial_crop_margin - 1) / 2
+    left, top = max(0, math.floor(x1 - dx)), max(0, math.floor(y1 - dy))
+    right, bottom = min(width, math.ceil(x2 + dx)), min(height, math.ceil(y2 + dy))
+    crop = frame[top:bottom, left:right]
+    if crop.size == 0 or crop.shape[:2] == frame.shape[:2]:
+        # Even an extreme admin crop margin must never turn this into a full-frame upload.
+        return None
+    # Store the expected box as it actually is, clamping included: at a frame edge
+    # the fish is no longer centred, and recomputing a centred box later would
+    # match the wrong object.
+    expected = [(x1 - left) / (right - left), (y1 - top) / (bottom - top),
+                (x2 - left) / (right - left), (y2 - top) / (bottom - top)]
+    ok, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    if not ok:
+        raise OSError("Species crop encoding failed")
+    return encoded.tobytes(), expected, [right - left, bottom - top]
+
+
 def preprocess_crop(crop, settings, cv2):
     """Shared live/replay preprocessing; never changes production settings."""
 

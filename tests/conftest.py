@@ -23,6 +23,11 @@ def test_settings(tmp_path: Path) -> Settings:
         job_root=tmp_path / "jobs",
         output_root=tmp_path / "outputs",
         live_scratch_root=tmp_path / "scratch",
+        # Off by default so no test can reach a photo service by accident; the
+        # reference tests turn it on with a transport of their own.
+        species_reference_enabled=False,
+        species_reference_root=tmp_path / "species-reference",
+        frontend_dist=tmp_path / "frontend-dist",
         viame_mock=True,
         fishial_enabled=False,
         fishial_client_id=None,

@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LIVE_SOURCE_KEY_PATTERN = re.compile(r"^[a-z0-9-]{1,64}$")
 DEFAULT_CORAL_CITY_URL = "https://www.coralcitycamera.com/"
-PREPROCESS_MODES = ("none", "white_balance", "clahe", "both")
+PREPROCESS_MODES = ("none", "white_balance", "clahe", "both", "funie_gan")
 # Blend weights for species_quality.track_quality. Crop size and sharpness dominate
 # because they are what Fishial's classifier actually needs; detector confidence is
 # weakest because it measures "is this a fish", not "is this crop identifiable".
@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://fish:fish@localhost:5432/fish_monitor"
     auto_create_tables: bool = False
 
+    # The built single-page app. FastAPI serves it; there is no Node at runtime.
+    frontend_dist: Path = Path("frontend/dist")
+
     upload_root: Path = Path("data/uploads")
     job_root: Path = Path("data/jobs")
     output_root: Path = Path("data/outputs")
@@ -105,6 +108,44 @@ class Settings(BaseSettings):
         description="Admin-controlled command executed by bash -lc after trusted env setup.",
     )
 
+    # --- Track thumbnails: one small crop per fish, shown in the track table ---
+    # A little wider than the box so the fish reads as a shape rather than a
+    # rectangle of scales, but no wider: compared side by side on Coral City
+    # footage, 1.9 left the animal too small to name in a 44px table cell while
+    # 1.45 fills it. Never below 1.0 - that would crop into the fish.
+    thumbnail_zoom_margin: float = Field(default=1.45, ge=1.0)
+    thumbnail_min_crop_pixels: int = Field(default=64, ge=16)
+
+    # --- Species reference photos: what the named species actually looks like ---
+    # A name returned by a classifier is a claim, and the only way an operator can
+    # check it is to compare the fish on screen with the animal the name refers to.
+    # One photo is fetched per species, ever, and cached on disk beside a sidecar
+    # recording its licence and where it came from; nothing is fetched per fish.
+    # A deployment with no egress can drop its own <slug>.jpg files into the root
+    # instead, and an unresolved species simply shows no photo.
+    species_reference_enabled: bool = True
+    species_reference_root: Path = Path("data/species-reference")
+    species_reference_api_base_url: str = "https://api.inaturalist.org/v1"
+    # Only openly licensed photos are stored. An all-rights-reserved observation
+    # photo is not ours to cache and serve, so such a species keeps no image. The
+    # no-derivatives licences are included because the photo is shown whole, beside
+    # its credit, and is never cropped, annotated or composited.
+    species_reference_allowed_licences: str = (
+        "cc0,pd,cc-by,cc-by-sa,cc-by-nd,cc-by-nc,cc-by-nc-sa,cc-by-nc-nd"
+    )
+    species_reference_timeout_seconds: float = Field(default=10.0, gt=0)
+    # A name the source does not know must not be asked about on every page view.
+    species_reference_retry_after_seconds: float = Field(default=24 * 3600.0, ge=0)
+    species_reference_max_bytes: int = Field(default=2 * 1024 * 1024, ge=1024)
+    # How many uncached names one request may go and fetch. The rest come back
+    # unresolved and are fetched by the next request rather than holding this one.
+    species_reference_max_lookups_per_request: int = Field(default=8, ge=0, le=50)
+    # Extra photos kept for a species an operator has opened for a closer look. One
+    # portrait answers "is this roughly that animal?"; choosing between two similar
+    # wrasse needs more than one angle. Fetched only when someone actually opens
+    # the viewer, never as part of drawing a table, and then cached like the first.
+    species_reference_gallery_size: int = Field(default=6, ge=0, le=24)
+
     clip_padding_seconds: float = Field(default=0.6, ge=0)
     clip_zoom_margin: float = Field(default=2.2, ge=1.0)
     clip_min_crop_pixels: int = Field(default=128, ge=16)
@@ -125,7 +166,19 @@ class Settings(BaseSettings):
     # single failed chunk can cost, and how far the annotated view trails the camera.
     live_segment_seconds: float = Field(default=2.0, ge=0.5, le=300)
     live_activity_window_seconds: float = Field(default=60.0, ge=10, le=3600)
-    live_fps: float = Field(default=5.0, ge=1, le=30)
+    live_fps: float = Field(default=4.0, ge=1, le=30)
+    # Preserve input detail for the 1024px detector without enlarging smaller feeds.
+    live_capture_width: int = Field(default=1920, ge=320, le=3840)
+    live_capture_height: int = Field(default=1080, ge=240, le=2160)
+    # --- Annotated live view: a display convenience, never a detection input ---
+    # Detection has already run at full capture resolution by the time this frame is
+    # published, so its size and rate only decide what the operator sees. On a
+    # bind-mounted output volume one 1080p JPEG costs ~140ms to publish, which at
+    # 4 FPS is most of the CPU budget for a segment; the dashboard polls it every
+    # two seconds, so writing four a second was wasted work. Raise the rate only if
+    # the output volume is fast, and the width only if operators view it full-screen.
+    live_snapshot_fps: float = Field(default=2.0, gt=0, le=30)
+    live_snapshot_max_width: int = Field(default=1280, ge=320, le=3840)
     live_retry_seconds: float = Field(default=3.0, gt=0)
     live_max_retry_seconds: float = Field(default=30.0, gt=0)
     live_max_retries: int = Field(default=10, ge=0)
@@ -133,6 +186,13 @@ class Settings(BaseSettings):
     live_detector_timeout_seconds: int = Field(default=60, ge=1)
     live_worker_stale_seconds: float = Field(default=120.0, ge=10)
     live_max_pending_segments: int = Field(default=3, ge=1, le=30)
+    # Keep every analyzed chunk so a finished session becomes a reviewable video.
+    # The recording holds exactly the frames that were analyzed, in order, so a
+    # detection's frame number indexes the recording directly.
+    live_recording_enabled: bool = True
+    # 0 disables the cap. Recording stops (the session does not) once a session's
+    # retained chunks pass this; at 5 fps/720p a session costs roughly 60 MB/hour.
+    live_recording_max_bytes: int = Field(default=8 * 1024 * 1024 * 1024, ge=0)
     # Per-frame crop spooling is write-heavy and short-lived. Keeping it off a slow
     # bound volume (a Windows bind mount costs ~30ms per small file) is what lets
     # inference keep up with the camera. Only finished crops and clips reach OUTPUT_ROOT.
@@ -165,6 +225,44 @@ class Settings(BaseSettings):
     fishial_min_species_score: float = Field(default=0.5, ge=0, le=1)
     fishial_min_frame_margin: float = Field(default=0.0, ge=0)
     fishial_max_api_retries: int = Field(default=2, ge=0)
+    # --- Operator-requested identification of one chosen fish ---
+    # The ceiling on "send this fish N frames". Each frame is one API call, and the
+    # operator authorises the spend per request, so this only bounds a slip of the
+    # finger. Frames beyond the fish's independent observation windows are never
+    # sent, so a short sighting costs less than the ceiling regardless.
+    fishial_request_max_frames: int = Field(default=12, ge=1, le=50)
+    fishial_request_default_frames: int = Field(default=5, ge=1, le=50)
+    # How long a claimed request may hold a fish before another may take it over.
+    # Only reached when the process running the request died mid-flight.
+    fishial_request_stale_seconds: float = Field(default=900.0, gt=0)
+    # A requested identification is deliberately MORE permissive than the automatic
+    # pass, because the two answer different questions. The automatic pass spends an
+    # unattended budget and must protect it from junk; a request is one operator
+    # pointing at one fish and authorising that spend, and refusing to ask about a
+    # small or briefly-seen fish just leaves them with no answer at all. Every value
+    # below overrides its unprefixed counterpart for requested identifications only.
+    #
+    # Floors: the detector's own MIN_FISH_CONFIDENCE already gated these boxes, so a
+    # second confidence floor only re-rejects fish the operator can plainly see.
+    fishial_request_min_frame_confidence: float = Field(default=0.0, ge=0, le=1)
+    fishial_request_min_crop_pixels: int = Field(default=24, ge=8)
+    # A fish against the frame edge is partly cut off, which the classifier may well
+    # still name. Worth asking when asking was the whole point.
+    fishial_request_edge_margin_pixels: int = Field(default=0, ge=0)
+    # Consensus: with 3-5 frames bought, the automatic rule (3 agreeing votes out of
+    # 3 submitted) means near-unanimity or nothing, and "nothing" is what an operator
+    # cannot act on. Two agreeing frames out of the frames sent is still evidence.
+    fishial_request_min_votes: int = Field(default=2, ge=1)
+    fishial_request_min_frames_to_vote: int = Field(default=1, ge=1)
+    fishial_request_vote_ratio: float = Field(default=0.5, ge=0, le=1)
+    fishial_request_min_species_score: float = Field(default=0.35, ge=0, le=1)
+    # The operator asked for these frames; spend them rather than giving up after a
+    # run of declines. 0 disables the declining-classifier stop for requests only.
+    fishial_request_max_empty_responses: int = Field(default=0, ge=0)
+    # Regional plausibility FLAGS a requested result instead of discarding it: the
+    # operator sees the name and the warning and decides. Dropping it silently leaves
+    # them with an unexplained blank, which is the worse of the two failures.
+    fishial_request_region_filter_enabled: bool = False
     # --- Unpaid candidate pool (staging is local and free; only calls cost) ---
     # 0 = auto: max(3 * fish_target, fish_target + 8), fixed at session start.
     fishial_candidate_pool_size: int = Field(default=0, ge=0)
@@ -186,8 +284,12 @@ class Settings(BaseSettings):
     fishial_object_match_min_margin: float = Field(default=0.2, ge=0, le=1)
     # --- Regional plausibility ---
     fishial_region_filter_enabled: bool = True
-    # --- Underwater preprocessing, applied only to the staged identification crop ---
+    # --- Underwater preprocessing, only after a staged crop is selected ---
     fishial_preprocess: str = "none"
+    fishial_funie_model_path: str | None = Field(default=None, repr=False)
+    fishial_funie_model_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    fishial_funie_device: Literal["auto", "cpu", "cuda"] = "auto"
+    fishial_funie_jpeg_quality: int = Field(default=95, ge=1, le=100)
     fishial_clahe_clip: float = Field(default=2.0, gt=0)
     fishial_upscale_short_side: int = Field(default=0, ge=0)
     # Retains fish imagery on the output volume for offline replay. Off by default.
@@ -223,12 +325,23 @@ class Settings(BaseSettings):
             raise ValueError("fishial_min_frames_to_vote must not exceed default frames per fish")
         if self.fishial_late_reserve_fish >= self.fishial_max_fish_per_session:
             raise ValueError("fishial_late_reserve_fish must be below the per-session fish ceiling")
+        if self.fishial_request_default_frames > self.fishial_request_max_frames:
+            raise ValueError("fishial_request_default_frames must not exceed "
+                             "fishial_request_max_frames")
+        if self.fishial_request_min_votes > self.fishial_request_max_frames:
+            raise ValueError("fishial_request_min_votes must not exceed "
+                             "fishial_request_max_frames")
         if (self.fishial_max_staged_frames_per_candidate
                 and self.fishial_max_staged_frames_per_candidate < self.fishial_min_frames_to_vote):
             raise ValueError("fishial_max_staged_frames_per_candidate must not be below "
                              "fishial_min_frames_to_vote")
         if self.fishial_preprocess not in PREPROCESS_MODES:
             raise ValueError(f"fishial_preprocess must be one of {', '.join(PREPROCESS_MODES)}")
+        if self.fishial_preprocess == "funie_gan" and (
+            not self.fishial_funie_model_path or not self.fishial_funie_model_path.strip()
+            or not self.fishial_funie_model_sha256
+        ):
+            raise ValueError("funie_gan requires a model path and SHA-256")
         weights = self.fishial_quality_weights
         if set(weights) != set(DEFAULT_QUALITY_WEIGHTS):
             raise ValueError(f"fishial_quality_weights must define exactly "

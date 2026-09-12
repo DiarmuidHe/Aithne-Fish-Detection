@@ -1,0 +1,458 @@
+/*
+ * Choosing a species by hand.
+ *
+ * Everything here is a picture-led choice, so the cards are mostly photograph and
+ * the text under them is caption-sized. The one rule the layout has to keep
+ * visible is the same one the rest of the product keeps: these are stock photos of
+ * a named animal, never the fish on camera, and the labels say so where an
+ * operator could otherwise forget it.
+ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  /* The dialog body scrolls; this keeps the tab strip from being pushed off it. */
+  min-height: 0;
+}
+
+.intro {
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--ink-muted);
+}
+
+/* --- The grid of choices -------------------------------------------------- */
+
+/*
+ * auto-fill rather than fixed columns: the same rule gives three across a desktop
+ * dialog, two on a tablet and one on a phone, without three breakpoints that can
+ * disagree with the dialog's own width.
+ */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 520px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  text-align: left;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.card:hover {
+  background: var(--surface-hover);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * Selected is blue, like every other chosen thing in the product. The border is
+ * drawn with an inset shadow rather than a thicker rule so the card does not
+ * change size when it is picked and shove the rest of the grid sideways.
+ */
+.card[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-quiet);
+}
+
+.cardImage {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  /* Contained: this is a shape comparison, and a fish with its head cropped off
+     is not a reference. */
+  object-fit: contain;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-control);
+}
+
+/* No photo is a fact worth showing, because the alternative is a card that
+   silently looks broken next to five that do not. */
+.cardImageEmpty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-control);
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+  text-align: center;
+  padding: var(--space-2);
+  box-sizing: border-box;
+}
+
+.cardName {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.cardScientific {
+  font-style: italic;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.cardNote {
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--accent);
+}
+
+.cardFootnote {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  color: var(--ink-faint);
+}
+
+/* The enlarge affordance sits on the photo, not beside it: the photo is the thing
+   being enlarged, and a second row of buttons would double the card's height. */
+.cardZoom {
+  position: relative;
+}
+
+.cardZoomButton {
+  position: absolute;
+  inset: auto var(--space-1) var(--space-1) auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--media-overlay);
+  color: var(--media-ink);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  cursor: zoom-in;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+/* Revealed on hover, but always present for a keyboard: an affordance only a
+   mouse can find is not one. */
+.card:hover .cardZoomButton,
+.cardZoomButton:focus-visible {
+  opacity: 1;
+}
+
+/* A touch device never hovers, so on one the affordance is simply always there. */
+@media (hover: none) {
+  .cardZoomButton {
+    opacity: 1;
+  }
+}
+
+.cardZoomButton:focus-visible {
+  outline: 2px solid var(--media-ink);
+  outline-offset: 1px;
+}
+
+/* --- Search --------------------------------------------------------------- */
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.searchRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.results {
+  /* Bounded so the chosen species below stays on screen while the list is
+     scrolled - choosing and confirming should not be two separate scroll
+     positions. */
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+/* --- What has been chosen ------------------------------------------------- */
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-panel);
+  background: var(--accent-quiet);
+}
+
+@media (max-width: 520px) {
+  .choice {
+    flex-direction: column;
+  }
+}
+
+.choiceImage {
+  flex: none;
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-control);
+  cursor: zoom-in;
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.choiceLabel {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.choiceName {
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
+  font-weight: var(--weight-medium);
+}
+
+.choiceScientific {
+  font-style: italic;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.choiceCredit {
+  margin-top: var(--space-1);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-sm);
+  color: var(--ink-faint);
+}
+
+.choiceCredit a {
+  color: inherit;
+}
+
+.choiceActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* --- The fullscreen viewer ------------------------------------------------ */
+
+.viewerBackdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--media-overlay);
+  transition: opacity var(--motion) var(--ease-out);
+  z-index: 60;
+}
+
+.viewerBackdrop[data-starting-style],
+.viewerBackdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.viewerViewport {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  z-index: 70;
+}
+
+.viewer {
+  box-sizing: border-box;
+  display: grid;
+  /* Photo and the other photos of the same animal, side by side on a desktop and
+     stacked below the width at which 40% stops being a usable strip. */
+  grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr);
+  gap: var(--space-5);
+  width: min(100%, 1200px);
+  max-height: calc(100vh - var(--space-10));
+  padding: var(--space-5);
+  border-radius: var(--radius-popup);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-popup);
+  transition:
+    opacity var(--motion) var(--ease-out),
+    transform var(--motion) var(--ease-out);
+}
+
+.viewer[data-starting-style],
+.viewer[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.99);
+}
+
+@media (max-width: 1023px) {
+  .viewer {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+}
+
+.viewerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewerFrame {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  flex: 1;
+  background: var(--media-well);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+.viewerImage {
+  max-width: 100%;
+  max-height: min(62vh, 640px);
+  object-fit: contain;
+}
+
+.viewerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.viewerTitle {
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  font-weight: var(--weight-strong);
+}
+
+.viewerScientific {
+  font-style: italic;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.viewerLabel {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.viewerCredit {
+  font-size: var(--text-xs);
+  line-height: var(--leading-sm);
+  color: var(--ink-faint);
+}
+
+.viewerCredit a {
+  color: inherit;
+}
+
+.viewerSide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewerThumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+@media (max-width: 1023px) {
+  /* Stacked under the photo, a wrapping grid would push the photo off screen; a
+     single scrolling row keeps the viewer one screen tall. */
+  .viewerThumbs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+
+.viewerThumb {
+  flex: none;
+  width: 96px;
+  aspect-ratio: 3 / 2;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.viewerThumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.viewerThumb:hover {
+  border-color: var(--hairline-strong);
+}
+
+.viewerThumb[aria-current='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.viewerThumb:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.viewerEmpty {
+  font-size: var(--text-xs);
+  line-height: var(--leading-sm);
+  color: var(--ink-faint);
+}
