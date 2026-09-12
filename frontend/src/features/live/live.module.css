@@ -2,7 +2,7 @@
  * Live monitoring: one instrument, then the record of what went past it.
  *
  * The console is a single dark slab — toolbar, footage, counts, lag line —
- * running edge to edge on the marine spine's own ground. Inside it every
+ * running edge to edge on the forest shell's own ground. Inside it every
  * semantic token is remapped to the chrome family, so the selects, number
  * fields, buttons and the activity chart adapt without a second set of rules.
  * Nothing inside the slab is a card; the parts are divided by hairlines.
@@ -18,7 +18,7 @@
   color: var(--chrome-ink);
   border-bottom: 1px solid var(--chrome-hairline);
 
-  /* --- The remap. Everything below this inherits the marine spine. --- */
+  /* --- The remap. Everything below this inherits the forest shell. --- */
   --surface: var(--chrome);
   --surface-raised: var(--chrome-raised);
   --surface-sunken: var(--chrome);
@@ -29,17 +29,54 @@
   --ink-faint: var(--chrome-ink-faint);
   --hairline: var(--chrome-hairline);
   --hairline-strong: var(--chrome-hairline-strong);
-  --accent: var(--chrome-accent);
-  --accent-hover: #67c7d1;
-  --accent-active: #85d5dd;
-  --accent-quiet: var(--chrome-accent-quiet);
-  --accent-quiet-hover: #1b3b43;
-  --accent-ink: #06171a;
-  --focus-ring: var(--chrome-accent);
+  /*
+   * The slab is the monitoring environment and stays green, but the things you
+   * press inside it are still things you press: the accent here is the same
+   * interaction blue as the rest of the product, lifted until it carries on a
+   * dark ground. Green inside the console means running and healthy, never
+   * clickable.
+   */
+  --accent: var(--chrome-action);
+  --accent-hover: var(--chrome-action-hover);
+  --accent-active: var(--chrome-action-active);
+  --accent-quiet: var(--chrome-action-quiet);
+  --accent-quiet-hover: var(--chrome-hover);
+  --accent-ink: #0d1c28;
+  --focus-ring: var(--chrome-action);
+  /*
+   * Inside the slab the ramp runs the other way — pale on deep — so a meter
+   * fills from sage toward the forest.
+   */
+  --gradient-meter: linear-gradient(90deg, #cbdcc8, var(--brand-sage) 58%, #6b8b73);
+  --selection: var(--chrome-hover);
+  /* The activity chart is the environment's own measure, so it stays sage. */
   --chart-1: var(--chrome-accent);
-  --chart-4: #2c6d76;
+  --chart-1-hover: var(--chrome-accent-hover);
+  --chart-2: var(--chrome-action);
+  --chart-3: var(--palette-plum-light);
+  --chart-4: var(--chrome-status-flagged);
+  --chart-5: var(--chrome-ink-faint);
+  --chart-muted: var(--chrome-hairline-strong);
   --chart-grid: var(--chrome-hairline);
   --chart-track: var(--chrome-raised);
+  --status-uploaded: #b0bda6;
+  --status-uploaded-bg: #2a3527;
+  --status-queued: #c9b483;
+  --status-queued-bg: #322d1f;
+  --status-processing: #bdc6a0;
+  --status-processing-bg: #2c3624;
+  --status-completed: var(--chrome-status-completed);
+  --status-completed-bg: #253a28;
+  --status-failed: var(--chrome-status-failed);
+  --status-failed-bg: #392823;
+  --status-flagged: var(--chrome-status-flagged);
+  --status-flagged-bg: #362d20;
+  --status-uploaded-edge: var(--chrome-ink-faint);
+  --status-queued-edge: var(--chrome-ink-faint);
+  --status-processing-edge: var(--chrome-status-completed);
+  --status-completed-edge: var(--chrome-status-completed);
+  --status-failed-edge: var(--chrome-status-failed);
+  --status-flagged-edge: var(--chrome-status-flagged);
   --shadow-panel: none;
 }
 
@@ -89,7 +126,7 @@
 .stage {
   position: relative;
   min-width: 0;
-  background: #000;
+  background: var(--media-well);
 }
 
 .player {
@@ -98,7 +135,7 @@
   max-height: calc(100vh - 320px);
   aspect-ratio: 16 / 9;
   object-fit: contain;
-  background: #000;
+  background: var(--media-well);
   display: block;
   margin-inline: auto;
 }
@@ -133,8 +170,8 @@
   gap: var(--space-2);
   padding: 4px var(--space-2);
   border-radius: var(--radius-control);
-  background: rgb(10 20 24 / 72%);
-  color: #e8eef0;
+  background: var(--media-overlay);
+  color: var(--media-ink);
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
   font-weight: var(--weight-medium);
@@ -146,7 +183,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ff5a4d;
+  background: var(--chrome-status-failed);
   animation: live-pulse 1800ms var(--ease-in-out) infinite;
 }
 
@@ -154,7 +191,7 @@
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: #ffb3ac;
+  color: var(--chrome-status-failed);
 }
 
 @keyframes live-pulse {
@@ -344,14 +381,22 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: var(--space-3);
-  align-items: baseline;
+  /* The name column carries a reference portrait, so the row centres on it. */
+  align-items: center;
   font-size: var(--text-sm);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--hairline);
 }
 
 .speciesName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
+}
+
+.speciesName > span {
+  font-style: italic;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

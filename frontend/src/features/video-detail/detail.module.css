@@ -42,6 +42,18 @@
   color: var(--ink-muted);
 }
 
+/* Marks footage this system recorded itself, rather than a file someone uploaded. */
+.badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
 .metaDot {
   width: 2px;
   height: 2px;
@@ -240,7 +252,7 @@
 .player {
   width: 100%;
   max-height: 60vh;
-  background: #000;
+  background: var(--media-well);
   border-radius: var(--radius-panel);
 }
 
@@ -309,5 +321,69 @@
   .trackNote {
     padding-left: var(--space-4);
     padding-right: var(--space-4);
+  }
+}
+
+/* The Fishial cell: the answer, with the action beside it rather than under it. */
+.fishialCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+/*
+ * The fish preview. Sized to the row it sits in: a square that reads at a glance
+ * without making the table taller than a dense table should be. The image is the
+ * content, so there is no card and no border around it — only the well behind it,
+ * which is what a crop with letterboxing needs to sit on.
+ */
+.previewButton,
+.previewEmpty {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-control);
+  background: var(--media-well);
+  overflow: hidden;
+}
+
+.previewButton {
+  padding: 0;
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+}
+
+.previewButton:hover,
+.previewButton:focus-visible {
+  border-color: var(--hairline-strong);
+}
+
+.previewButton img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.previewEmpty {
+  border: 1px dashed var(--hairline);
+  background: var(--surface-sunken);
+}
+
+/* Being generated: a quiet pulse rather than a spinner per row. */
+.previewEmpty[data-pending] {
+  border-style: solid;
+  animation: previewPending 1.6s ease-in-out infinite;
+}
+
+@keyframes previewPending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .previewEmpty[data-pending] {
+    animation: none;
   }
 }

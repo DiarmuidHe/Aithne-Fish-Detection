@@ -12,6 +12,9 @@ body,
 
 body {
   margin: 0;
+  /* Scrollbars are part of the chrome, not a grey the OS chose for us. */
+  scrollbar-color: var(--hairline-strong) transparent;
+  scrollbar-width: thin;
   /* Base UI needs this for iOS 26+ Safari backdrops to cover after scrolling. */
   position: relative;
   background: var(--surface);
@@ -72,6 +75,11 @@ table {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
   border-radius: var(--radius-control);
+}
+
+/* Selected text takes a pale wash of the interaction blue, so ink reads through. */
+::selection {
+  background: var(--selection);
 }
 
 [hidden] {

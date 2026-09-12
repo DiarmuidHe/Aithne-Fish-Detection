@@ -431,7 +431,7 @@ export function MetricCard({
   label: string;
   value: React.ReactNode;
   meta?: React.ReactNode;
-  tone?: 'accent' | 'failed' | 'flagged';
+  tone?: 'active' | 'failed' | 'flagged';
   to?: string;
 }) {
   const body = (

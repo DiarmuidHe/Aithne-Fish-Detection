@@ -57,7 +57,7 @@
 }
 
 .barMuted {
-  fill: var(--chart-4);
+  fill: var(--chart-muted);
 }
 
 @keyframes grow-column {
@@ -69,8 +69,12 @@
   }
 }
 
+/*
+ * Hover stays inside the series colour. Swapping a bar to the interaction
+ * blue would say the bar had become a different measurement.
+ */
 .column:hover .bar {
-  fill: var(--accent-hover);
+  fill: var(--chart-1-hover);
 }
 
 .hit {
@@ -132,7 +136,7 @@
 }
 
 .row:hover .fill {
-  background: var(--accent-hover);
+  background: var(--chart-1-hover);
 }
 
 @keyframes grow-bar {

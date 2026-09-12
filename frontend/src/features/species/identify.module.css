@@ -1,0 +1,216 @@
+/* The identification control and its account of what happened. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 34ch;
+}
+
+.note {
+  font-size: var(--text-xs);
+  line-height: var(--leading-sm);
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.note code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* --- One-line answer, for a table cell or a tile -------------------------- */
+
+.badge {
+  display: inline-flex;
+  /* Centred, not baseline-aligned: the row now carries a portrait as well as text. */
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--ink);
+}
+
+.badge[data-state='identified'] {
+  font-style: italic;
+}
+
+.badge[data-state='submitted'] {
+  color: var(--ink-muted);
+}
+
+.badge[data-state='review'] {
+  color: var(--status-flagged);
+}
+
+/*
+ * A name a person put on, which is the strongest claim on the row and reads as
+ * one: full-strength ink where a machine's answer is quieter. The word "assigned"
+ * beside it does the actual distinguishing, because the weight alone would not.
+ */
+.badge[data-state='manual'] {
+  font-style: italic;
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.badgeScore {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+}
+
+.badgeEmpty {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+/*
+ * The operator's own answer inside the panel: the same green the product uses for
+ * a settled state, on the one line that says a person decided this rather than a
+ * model.
+ */
+.assigned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--status-completed-edge);
+  background: var(--status-completed-bg);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.assignedWhen {
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+}
+
+/* --- The full account ----------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+}
+
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Two ways to name one fish, side by side, wrapping before they squeeze. */
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.headline {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A scientific name is set in italics wherever it appears. */
+.species {
+  font-style: italic;
+  font-weight: var(--weight-strong);
+}
+
+.headlineNote {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.figures dt {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.figures dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.candidates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.candidateList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.candidateList li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.candidateName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-style: italic;
+  font-size: var(--text-sm);
+}
+
+.candidateScore {
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+}
+
+/* The caution sentence carries a nameplate mid-line, so it sits on the text. */
+.caution > span {
+  vertical-align: middle;
+}
+
+/*
+ * A name the region list does not recognise. Marked, not hidden: the operator is
+ * the one who decides, and they cannot decide about something they were not shown.
+ */
+.caution {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--status-flagged-edge);
+  background: var(--status-flagged-bg);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  line-height: var(--leading-sm);
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}

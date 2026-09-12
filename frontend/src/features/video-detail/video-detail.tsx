@@ -2,7 +2,13 @@ import * as React from 'react';
 import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { annotateVideo, fetchVideo, generateFishClips, startProcessing } from '@/api/videos';
+import {
+  annotateVideo,
+  fetchSourceSession,
+  fetchVideo,
+  generateFishClips,
+  startProcessing,
+} from '@/api/videos';
 import { Button } from '@/components/base/button';
 import {
   EmptyState,
@@ -49,6 +55,14 @@ export function VideoDetail({
     queryKey: ['video', videoId],
     queryFn: () => fetchVideo(videoId as string),
     enabled: Boolean(videoId),
+  });
+
+  // Where the footage came from, for a recording of a live session.
+  const sourceSession = useQuery({
+    queryKey: ['video-source-session', videoId],
+    queryFn: () => fetchSourceSession(videoId as string),
+    enabled: Boolean(videoId) && video.data?.is_live_recording === true,
+    retry: false,
   });
 
   const active =
@@ -160,6 +174,7 @@ export function VideoDetail({
           <Hint content={data.original_filename}>
             <h2 className={styles.title}>{data.original_filename}</h2>
           </Hint>
+          {data.is_live_recording ? <span className={styles.badge}>Live</span> : null}
           <StatusPill status={data.processing_status} />
           <Button variant="quiet" iconOnly aria-label="Close this video" onClick={onClose}>
             <CloseIcon />
@@ -185,6 +200,17 @@ export function VideoDetail({
             </>
           ) : null}
         </div>
+
+        {data.is_live_recording ? (
+          <p className={styles.meta}>
+            Recorded live from {sourceSession.data?.source_label ?? data.camera_id ?? 'a camera'}
+            {sourceSession.data?.started_at
+              ? `, monitored from ${formatDateTime(sourceSession.data.started_at)}`
+              : ''}
+            . Its detections came from the live session, so they are ready to review and
+            annotate here.
+          </p>
+        ) : null}
 
         {active ? (
           <div className={styles.callout} aria-live="polite">

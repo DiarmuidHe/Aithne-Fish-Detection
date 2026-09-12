@@ -77,13 +77,13 @@ export function SystemRoute() {
           label="Queued"
           value={formatCount(status.queue.queued)}
           meta="Waiting for a worker"
-          tone={status.queue.queued > 0 ? 'accent' : undefined}
+          tone={status.queue.queued > 0 ? 'active' : undefined}
         />
         <MetricCard
           label="Processing"
           value={formatCount(status.queue.processing)}
           meta="Running now"
-          tone={status.queue.processing > 0 ? 'accent' : undefined}
+          tone={status.queue.processing > 0 ? 'active' : undefined}
         />
         <MetricCard
           label="Failed jobs"

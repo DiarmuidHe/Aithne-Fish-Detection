@@ -27,6 +27,18 @@ class QueueStatusRead(BaseModel):
     failed: int
 
 
+class SpeciesIdentificationRead(BaseModel):
+    """Whether an operator may ask Fishial to name one chosen fish, and the limits.
+
+    Served with system status because the control appears on several screens and
+    none of them should have to discover the deployment's limits separately.
+    """
+
+    available: bool
+    max_frames: int
+    default_frames: int
+
+
 class SystemStatusRead(BaseModel):
     ready: bool
     processing_mode: str
@@ -34,3 +46,4 @@ class SystemStatusRead(BaseModel):
     database: DatabaseStatusRead
     worker: WorkerStatusRead
     queue: QueueStatusRead
+    species_identification: SpeciesIdentificationRead

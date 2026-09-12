@@ -1,5 +1,5 @@
 /*
- * The chrome: a dark marine rail on the left, a light application bar across
+ * The chrome: a dark forest rail on the left, a light application bar across
  * the workspace, and route content below it. The rail and bar never scroll.
  */
 
@@ -17,13 +17,13 @@
   grid-template-columns: var(--rail-width-collapsed) minmax(0, 1fr);
 }
 
-/* --- The marine spine ----------------------------------------------------- */
+/* --- The forest shell ----------------------------------------------------- */
 
 .rail {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--chrome);
+  background: var(--gradient-shell);
   color: var(--chrome-ink);
   box-shadow: var(--shadow-spine);
   overflow: hidden;
@@ -38,7 +38,7 @@
   height: var(--appbar-height);
   padding: 0 var(--space-3);
   flex: none;
-  border-bottom: 1px solid var(--chrome-hairline);
+  border-bottom: 1px solid var(--rail-hairline);
 }
 
 .brandLink {
@@ -102,7 +102,7 @@
 }
 
 .collapseButton:hover {
-  background: var(--chrome-hover);
+  background: var(--rail-hover);
   color: var(--chrome-ink);
 }
 
@@ -160,7 +160,7 @@
 }
 
 .navItem:hover {
-  background: var(--chrome-hover);
+  background: var(--rail-hover);
   color: var(--chrome-ink);
 }
 
@@ -170,13 +170,13 @@
 }
 
 .navItem[aria-current='page'] {
-  background: var(--chrome-accent-quiet);
+  background: var(--rail-selected);
   color: var(--chrome-ink);
 }
 
 /*
  * The active marker grows out of the left edge rather than appearing: 3px of
- * teal, 160 ms, and it is the only motion in the rail.
+ * sage, 160 ms, and it is the only motion in the rail.
  */
 .navItem::before {
   content: '';
@@ -229,7 +229,7 @@
 .railFooter {
   margin-top: auto;
   padding: var(--space-2);
-  border-top: 1px solid var(--chrome-hairline);
+  border-top: 1px solid var(--rail-hairline);
   flex: none;
 }
 
@@ -245,7 +245,7 @@
 }
 
 .health:hover {
-  background: var(--chrome-hover);
+  background: var(--rail-hover);
 }
 
 .healthDot {
@@ -253,11 +253,11 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--status-failed);
+  background: var(--chrome-status-failed);
 }
 
 .health[data-ready] .healthDot {
-  background: #4cc08a;
+  background: var(--chrome-status-completed);
   /* A slow breath, so a glance at the rail says the worker is alive. */
   animation: pulse-dot 2600ms var(--ease-in-out) infinite;
 }
@@ -265,10 +265,10 @@
 @keyframes pulse-dot {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(76 192 138 / 40%);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chrome-status-completed) 30%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 4px rgb(76 192 138 / 0%);
+    box-shadow: 0 0 0 4px transparent;
   }
 }
 
@@ -311,7 +311,7 @@
   height: 1px;
   padding: 0;
   margin-bottom: var(--space-1);
-  background: var(--chrome-hairline);
+  background: var(--rail-hairline);
   color: transparent;
 }
 
@@ -347,6 +347,14 @@
   flex: none;
   background: var(--surface-raised);
   border-bottom: 1px solid var(--hairline);
+}
+
+.appBar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--brand-gradient);
 }
 
 .appBarTitle {
@@ -427,8 +435,8 @@
   background: linear-gradient(
     90deg,
     transparent,
-    var(--accent) 30%,
-    var(--accent) 70%,
+    var(--chart-1) 30%,
+    var(--chart-1) 70%,
     transparent
   );
   transform: translateX(-100%);
@@ -691,7 +699,7 @@
 .metricRow[data-tone='console'] {
   margin-inline: calc(var(--space-5) * -1);
   margin-top: calc(var(--space-5) * -1);
-  background: var(--chrome-hairline);
+  background: var(--gradient-console);
   color: var(--chrome-ink);
   border: 0;
   border-bottom: 1px solid var(--chrome-hairline);
@@ -707,6 +715,15 @@
   background: inherit;
 }
 
+/*
+ * On the strip the cells are cut out of the ramp rather than painted on it:
+ * transparent cells over a sage-tinted ground, so the 1px gaps are the only
+ * rules and the run of figures crosses one continuous colour.
+ */
+.metricRow[data-tone='console'] .metricCells {
+  background: var(--rail-hairline);
+}
+
 .metricAside {
   display: flex;
   align-items: center;
@@ -719,8 +736,9 @@
 }
 
 .metricRow[data-tone='console'] .metricAside {
-  background: var(--chrome);
+  background: transparent;
   color: var(--chrome-ink-muted);
+  box-shadow: inset 1px 0 0 var(--rail-hairline);
 }
 
 .metric {
@@ -736,7 +754,7 @@
 }
 
 .metricRow[data-tone='console'] .metric {
-  background: var(--chrome);
+  background: transparent;
   padding-block: var(--space-4);
 }
 
@@ -776,7 +794,7 @@
 }
 
 .metricRow[data-tone='console'] .metric[data-interactive]:hover {
-  background: var(--chrome-raised);
+  background: var(--rail-hover);
 }
 
 .metric[data-interactive]:hover::after,
@@ -821,11 +839,15 @@
   color: var(--chrome-ink);
 }
 
-.metricValue[data-tone='accent'] {
-  color: var(--accent);
+/*
+ * A figure with work behind it right now. Green because it is running, not
+ * blue: the number is a reading, and you cannot press it.
+ */
+.metricValue[data-tone='active'] {
+  color: var(--status-processing);
 }
 
-.metricRow[data-tone='console'] .metricValue[data-tone='accent'] {
+.metricRow[data-tone='console'] .metricValue[data-tone='active'] {
   color: var(--chrome-accent);
 }
 
@@ -839,11 +861,11 @@
 
 /* The status hues have to clear the dark ground, so they run lighter there. */
 .metricRow[data-tone='console'] .metricValue[data-tone='failed'] {
-  color: #e59a91;
+  color: var(--chrome-status-failed);
 }
 
 .metricRow[data-tone='console'] .metricValue[data-tone='flagged'] {
-  color: #e0ab72;
+  color: var(--chrome-status-flagged);
 }
 
 .metricMeta {
@@ -883,7 +905,7 @@
     height: 1px;
     padding: 0;
     margin-bottom: var(--space-1);
-    background: var(--chrome-hairline);
+    background: var(--rail-hairline);
     color: transparent;
   }
 

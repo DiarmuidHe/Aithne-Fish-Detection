@@ -14,6 +14,8 @@
   font-weight: var(--weight-medium);
   white-space: nowrap;
   cursor: pointer;
+  /* LinkButton renders an <a>, which would otherwise arrive underlined. */
+  text-decoration: none;
   transition:
     background-color var(--motion-fast) var(--ease-out),
     border-color var(--motion-fast) var(--ease-out),
@@ -34,24 +36,29 @@
   cursor: not-allowed;
 }
 
+/*
+ * The one dominant action in a group. A flat fill, because a filled button is
+ * a target and not a surface: the gradient it used to carry read as decoration
+ * the moment the colour started meaning "you can press this".
+ */
 .primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background-color: var(--accent);
+  border-color: var(--accent-hover);
   color: var(--accent-ink);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background-color: var(--accent-hover);
   border-color: var(--accent-hover);
 }
 
 .primary:active:not(:disabled) {
-  background: var(--accent-active);
+  background-color: var(--accent-active);
   border-color: var(--accent-active);
 }
 
 .primary:disabled {
-  background: var(--surface-sunken);
+  background-color: var(--surface-sunken);
   border-color: var(--hairline);
   color: var(--ink-faint);
 }
@@ -67,13 +74,31 @@
   color: var(--ink);
 }
 
+/*
+ * Destructive, and outlined rather than filled: a red slab sitting in a
+ * toolbar reads as an alarm the operator has to keep dismissing. It commits to
+ * the fill only under the pointer, at the moment the press is actually likely.
+ */
 .danger {
-  border-color: var(--status-failed);
+  border-color: var(--status-failed-edge);
   color: var(--status-failed);
 }
 
 .danger:hover:not(:disabled) {
-  background: var(--status-failed-bg);
+  background: var(--status-failed-edge);
+  border-color: var(--status-failed-edge);
+  color: #ffffff;
+}
+
+.danger:active:not(:disabled) {
+  background: var(--status-failed);
+  border-color: var(--status-failed);
+  color: #ffffff;
+}
+
+.danger:disabled {
+  border-color: var(--hairline);
+  color: var(--ink-faint);
 }
 
 .small {

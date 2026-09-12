@@ -1,0 +1,110 @@
+/*
+ * Reference portraits: what the named species looks like, beside the name.
+ *
+ * The portrait is deliberately quieter than the fish's own crop next to it - a
+ * softer border and no button affordance - so the two are never confused. One is
+ * evidence from this camera, the other is a picture from a book.
+ */
+
+.thumb {
+  flex: none;
+  display: block;
+  /* Landscape, because a fish is: a square crop of a fish photo is a crop of its
+     middle, which is the one part of the animal that identifies nothing. */
+  object-fit: cover;
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+}
+
+/* Beside a name in running text or a dense table cell. */
+.thumb[data-size='inline'] {
+  width: 34px;
+  height: 24px;
+}
+
+/* A list row that has space to be looked at rather than skimmed. */
+.thumb[data-size='row'] {
+  width: 48px;
+  height: 34px;
+}
+
+/* Under a gallery tile, where it sits next to a clip of the animal itself. */
+.thumb[data-size='tile'] {
+  width: 40px;
+  height: 28px;
+}
+
+.nameplate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.nameplateText {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A scientific name is set in italics wherever it appears. */
+.name {
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- The full comparison, for the identification panel -------------------- */
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+}
+
+.cardImage {
+  flex: none;
+  width: 148px;
+  height: 104px;
+  /* Contained, not cropped: this is the one place an operator is comparing shapes,
+     and a fish with its head cut off is not a reference. */
+  object-fit: contain;
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+}
+
+.cardCaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cardLabel {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  /* The caption column is narrow inside the inspector; break it evenly there. */
+  text-wrap: balance;
+}
+
+.cardCommon {
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.cardCredit {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-sm);
+  color: var(--ink-faint);
+}
+
+.cardCredit a {
+  color: inherit;
+}

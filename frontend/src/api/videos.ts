@@ -2,8 +2,10 @@ import { postJson, request, requestWithResponse, toQuery, type QueryValue } from
 import type {
   BatchResponse,
   LibraryAnalyticsRow,
+  LiveSession,
   TrackClip,
   TrackSummary,
+  TrackThumbnail,
   Video,
   VideoAnalytics,
   VideoAnnotation,
@@ -42,6 +44,11 @@ export function fetchFacets(): Promise<VideoFacets> {
 
 export function fetchVideo(videoId: string): Promise<Video> {
   return request<Video>(`/videos/${encodeURIComponent(videoId)}`);
+}
+
+/** The live session a recording came from; 404 for an ordinary upload. */
+export function fetchSourceSession(videoId: string): Promise<LiveSession> {
+  return request<LiveSession>(`/videos/${encodeURIComponent(videoId)}/source-session`);
 }
 
 export function fetchSummary(videoId: string): Promise<VideoSummary> {
@@ -83,6 +90,15 @@ export function generateFishClips(videoId: string): Promise<TrackClip[]> {
   return request<TrackClip[]>(`/videos/${encodeURIComponent(videoId)}/fish-clips`, {
     method: 'POST',
   });
+}
+
+/**
+ * Every fish preview for a video, generating any that are missing. Asked once per
+ * video rather than once per row: the server reads the source in a single pass, so
+ * one request costs barely more than one thumbnail would.
+ */
+export function fetchTrackThumbnails(videoId: string): Promise<TrackThumbnail[]> {
+  return request<TrackThumbnail[]>(`/videos/${encodeURIComponent(videoId)}/thumbnails`);
 }
 
 export function uploadVideo(file: File, cameraId: string): Promise<Video> {

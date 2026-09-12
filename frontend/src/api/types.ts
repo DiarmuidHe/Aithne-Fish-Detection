@@ -68,6 +68,9 @@ export interface Video {
   pipeline_name: string;
   confidence_threshold: number;
   annotated_at: string | null;
+  /** A completed live session, recorded and registered as an ordinary video. */
+  is_live_recording: boolean;
+  source_session_id: string | null;
   latest_job: Job | null;
 }
 
@@ -115,7 +118,137 @@ export interface VideoSummary {
   viame_version: string | null;
 }
 
-export interface TrackSummary {
+/** What a library track's identification can be. */
+export type FishialState =
+  | 'none'
+  | 'submitted'
+  | 'identified'
+  | 'review_required'
+  | 'error';
+
+/**
+ * A live track adds the automatic pass's own states: `candidate` is staged but
+ * unpaid, while `pending` and `ready` have been selected and will be paid for.
+ */
+export type LiveFishialState =
+  | FishialState
+  | 'disabled'
+  | 'candidate'
+  | 'pending'
+  | 'ready';
+
+/** Diagnostics explaining an abstention, shared by live and recorded fish. */
+export interface FishialDiagnostics {
+  reason?: string;
+  stop_reason?: string;
+  budget_scope?: string | null;
+  candidates?: {
+    species: string;
+    common_name?: string | null;
+    max_score: number;
+    frames?: number;
+    rejected_for_region?: boolean;
+  }[];
+  frame_reasons?: Record<string, number>;
+}
+
+/** One fish's Fishial identification: unasked, running, or finished. */
+export interface TrackIdentification {
+  track_id: string;
+  state: LiveFishialState;
+  species: string | null;
+  confidence: number | null;
+  /**
+   * `frames_requested` is what the operator asked to pay for; `frames_selected`
+   * is what the fish was actually seen doing in enough separate moments to be
+   * worth sending, which can be fewer.
+   */
+  frames_requested: number | null;
+  frames_selected: number;
+  frames_submitted: number;
+  /**
+   * Distinct moments the sent frames span. Fewer than `frames_submitted` means some
+   * of them share a moment, which is weaker evidence and is shown as such.
+   */
+  windows: number;
+  calls_saved: number;
+  quality_score: number | null;
+  requested_at: string | null;
+  completed_at: string | null;
+  stopped_early: string | null;
+  /** Set when the reported name is not on this camera's regional species list. */
+  implausible_for_region: string | null;
+  tally: Record<string, number>;
+  diagnostics: FishialDiagnostics | null;
+}
+
+/**
+ * A stock photo of what a named species looks like - never a detected fish.
+ *
+ * `unknown` means the server has not looked the name up yet, and a later request
+ * may well come back with a photo; `missing` means it looked and there is none.
+ */
+export interface SpeciesReference {
+  species: string;
+  slug: string;
+  state: 'found' | 'missing' | 'unknown';
+  common_name: string | null;
+  image_url: string | null;
+  attribution: string | null;
+  licence: string | null;
+  source: string | null;
+  source_url: string | null;
+}
+
+/**
+ * A species an operator may choose, with whatever portrait we already hold.
+ *
+ * `origin` says where the name came from: `catalogue` is the curated list for
+ * these waters, `observed` is a name this deployment has already recorded and can
+ * therefore be chosen again even though no curated list holds it.
+ */
+export interface SpeciesSearchResult extends SpeciesReference {
+  origin: 'catalogue' | 'observed';
+}
+
+/** One photo in a species' gallery, with the credit it must be shown under. */
+export interface SpeciesPhoto {
+  url: string;
+  media_type: string;
+  attribution: string | null;
+  licence: string | null;
+  source_url: string | null;
+}
+
+/** Every reference photo held for one species, the portrait first - never the fish. */
+export interface SpeciesGallery {
+  species: string;
+  slug: string;
+  common_name: string | null;
+  photos: SpeciesPhoto[];
+}
+
+/** Fishial fields carried on every track row, beside the detector's own name. */
+export interface FishialFields {
+  fishial_state: LiveFishialState;
+  fishial_species: string | null;
+  fishial_species_confidence: number | null;
+}
+
+/**
+ * The name a person put on a fish, beside whatever the two machines said.
+ *
+ * Its own field, never a replacement: a track can carry a VIAME class, a Fishial
+ * species and an operator's decision at once, and a reviewer needs to be able to
+ * tell which they are reading. Absent means nobody has decided, which is not the
+ * same as somebody having agreed.
+ */
+export interface ManualSpecies {
+  manual_species: string | null;
+  manual_species_at: string | null;
+}
+
+export interface TrackSummary extends FishialFields, ManualSpecies {
   id: string;
   video_id: string;
   processing_job_id: string | null;
@@ -150,7 +283,7 @@ export interface Detection {
   class_confidence: number | null;
 }
 
-export interface Track {
+export interface Track extends FishialFields, ManualSpecies {
   id: string;
   video_id: string;
   processing_job_id: string | null;
@@ -169,7 +302,7 @@ export interface Track {
   detections: Detection[];
 }
 
-export interface TrackClip {
+export interface TrackClip extends FishialFields, ManualSpecies {
   track_id: string;
   video_id: string;
   viame_track_id: string;
@@ -188,6 +321,12 @@ export interface TrackClip {
   max_confidence: number;
   generated_at: string;
   cached: boolean;
+  url: string;
+}
+
+/** Where to find one fish's preview crop. */
+export interface TrackThumbnail {
+  track_id: string;
   url: string;
 }
 
@@ -220,6 +359,12 @@ export interface SystemStatus {
     message: string;
   };
   queue: { queued: number; processing: number; failed: number };
+  /** Whether an operator may ask Fishial to name one chosen fish, and the limits. */
+  species_identification: {
+    available: boolean;
+    max_frames: number;
+    default_frames: number;
+  };
 }
 
 export interface HistogramBin {
@@ -289,6 +434,8 @@ export interface LiveSources {
     enabled: boolean;
     max_fish_per_session: number;
     default_frames_per_fish: number;
+    request_max_frames: number;
+    request_default_frames: number;
   };
   sources: LiveSource[];
 }
@@ -301,6 +448,8 @@ export interface LiveSpeciesProgress {
   fish_identified: number;
   fish_review_required: number;
   api_calls: number;
+  /** Calls an operator asked for, counted apart from the session's own budget. */
+  manual_api_calls: number;
   candidates: number;
   calls_saved: number;
   region: string | null;
@@ -350,24 +499,16 @@ export interface LiveTrack {
   clip_url: string | null;
   crop_url: string | null;
   media_error: string | null;
-  fishial_state: string;
+  fishial_state: LiveFishialState;
   fishial_species: string | null;
   fishial_species_confidence: number | null;
   fishial_frames_used: number;
   fishial_votes: Record<string, unknown>;
   fishial_quality_score: number | null;
-  fishial_diagnostics: {
-    reason?: string;
-    stop_reason?: string;
-    budget_scope?: string;
-    candidates?: {
-      species: string;
-      common_name?: string;
-      max_score: number;
-      rejected_for_region?: boolean;
-    }[];
-    frame_reasons?: Record<string, number>;
-  } | null;
+  fishial_diagnostics: FishialDiagnostics | null;
+  manual_species: string | null;
+  manual_species_at: string | null;
+  identification: TrackIdentification;
 }
 
 export interface LiveActivity {

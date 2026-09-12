@@ -27,7 +27,7 @@ Important current facts to verify rather than blindly assume
   above the then-current 0.60 acceptance threshold. The stock motion-fusion pipeline
   produced 7 accepted tracks/124 observations on that one sample. These are output
   counts, not ground truth and not proof of better accuracy.
-- The local `.env` currently uses `LIVE_FPS=2` and `MIN_FISH_CONFIDENCE=0.50`. Do not
+- The local `.env` currently uses `LIVE_FPS=2` and `MIN_FISH_CONFIDENCE=0.60`. Do not
   print, copy, commit or modify credentials from `.env`.
 - `VIAME_TRACKER_BUFFER_FRAMES=30` is frame-based. At 10 FPS it represents about
   3 seconds; at 2 FPS it represents about 15 seconds. Establish whether that mismatch

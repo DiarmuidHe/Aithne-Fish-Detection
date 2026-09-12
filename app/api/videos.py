@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
 from app.db.database import get_db
-from app.db.models import FishTrack, Video, VideoProcessingStatus
+from app.db.models import FishTrack, LiveMonitorSession, Video, VideoProcessingStatus
+from app.api.live import session_data
 from app.api.tracks import clip_response
 from app.schemas.filters import (
     ReviewFilter,
@@ -25,7 +26,12 @@ from app.schemas.filters import (
     VideoStatusFilter,
 )
 from app.schemas.job import JobRead
-from app.schemas.track import FishTrackRead, FishTrackSummaryRead, TrackClipRead
+from app.schemas.track import (
+    FishTrackRead,
+    FishTrackSummaryRead,
+    TrackClipRead,
+    TrackThumbnailRead,
+)
 from app.schemas.video import (
     VideoAnnotationRead,
     VideoFacets,
@@ -46,6 +52,7 @@ from app.services.track_clip import (
     existing_clip,
     generate_track_clips,
 )
+from app.services.track_thumbnail import generate_video_thumbnails
 from app.services.video_service import enqueue_video_processing, register_uploaded_video
 from app.services.video_annotator import (
     AnnotatedVideoResult,
@@ -267,7 +274,8 @@ def create_fish_clips(
         )
     except TrackClipError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return [clip_response(result) for result in results]
+    by_id = {track.id: track for track in tracks}
+    return [clip_response(result, by_id.get(result.track_id)) for result in results]
 
 
 @router.get("/{video_id}/fish-clips", response_model=list[TrackClipRead])
@@ -280,8 +288,30 @@ def list_fish_clips(
     """List the clips already on disk; generation stays an explicit action."""
 
     video = _get_video_or_404(db, video_id)
-    clips = [existing_clip(track, settings) for track in _clip_tracks(db, video, accepted_only)]
-    return [clip_response(clip) for clip in clips if clip is not None]
+    tracks = _clip_tracks(db, video, accepted_only)
+    by_id = {track.id: track for track in tracks}
+    clips = [existing_clip(track, settings) for track in tracks]
+    return [clip_response(clip, by_id.get(clip.track_id)) for clip in clips if clip is not None]
+
+
+@router.get("/{video_id}/thumbnails", response_model=list[TrackThumbnailRead])
+def list_track_thumbnails(
+    video_id: uuid.UUID,
+    refresh: bool = Query(False),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> list[TrackThumbnailRead]:
+    """Every fish preview for this video, generating any that are missing.
+
+    Per video rather than per track: reaching a frame means grabbing forward through
+    the source, so one pass produces all of them for barely more than the cost of
+    one. A track whose crop could not be rendered is simply absent.
+    """
+
+    video = _get_video_or_404(db, video_id)
+    found = generate_video_thumbnails(db, video, settings, refresh=refresh)
+    return [TrackThumbnailRead(track_id=track_id, url=f"/tracks/{track_id}/thumbnail")
+            for track_id in found]
 
 
 @router.get("/{video_id}/source-video")
@@ -293,6 +323,19 @@ def get_source_video(video_id: uuid.UUID, db: Session = Depends(get_db),
         raise HTTPException(404, "Source video unavailable")
     return FileResponse(path, media_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream",
                         filename=f"{video.id}{path.suffix}", content_disposition_type="inline")
+
+
+@router.get("/{video_id}/source-session")
+def get_source_session(video_id: uuid.UUID, db: Session = Depends(get_db),
+                       settings: Settings = Depends(get_settings)):
+    """The live session a recording came from, so a reviewer can see its context."""
+
+    video = _get_video_or_404(db, video_id)
+    session = (db.get(LiveMonitorSession, video.source_session_id)
+               if video.source_session_id else None)
+    if session is None:
+        raise HTTPException(404, "This video did not come from a live monitoring session")
+    return session_data(session, settings, db)
 
 
 @router.get("/{video_id}/tracks", response_model=list[FishTrackRead])

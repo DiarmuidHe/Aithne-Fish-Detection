@@ -40,6 +40,9 @@ underwater video
 - CSV exports for summaries, accepted/all tracks, observations, and selected/all-video batches.
 - Batch queueing and annotation actions with per-video results and aggregate progress.
 - Library counts, observation timelines, confidence histograms, and track-duration histograms.
+- Finished live sessions recorded and published to the library as annotatable videos.
+- Reference photos of each named species, shown beside the name so an identification
+  can be checked by eye.
 
 ## Quick Start
 
@@ -414,7 +417,7 @@ write is only an upper bound including buffering; total wall time is the conserv
 Peak device memory may include other GPU processes.
 
 Settings and Compose use batch 10 FPS and acceptance .60 by default, and live defaults to 5 FPS.
-The locally observed `.env` overrides live to 2 FPS and acceptance to .50. GPU Compose explicitly
+The locally observed `.env` overrides live to 2 FPS and keeps acceptance at .60. GPU Compose explicitly
 selects the checked-in DEIM/ByteTrack pipeline and frame offset −1; bare `Settings` still names the
 installed fusion pipeline and defaults to offset 0. Treat these profiles separately. The benchmark
 reads only explicitly allowed numeric values and never persists `.env` credentials.
@@ -570,6 +573,13 @@ Download or stream the generated annotated video:
 curl -L http://localhost:8000/videos/{video_id}/annotated-video --output annotated.mp4
 ```
 
+A video recorded from a live session answers with the session it came from; an uploaded video
+answers 404:
+
+```bash
+curl http://localhost:8000/videos/{video_id}/source-session
+```
+
 ### Cropped Fish Clips
 
 Cut one short clip per accepted fish, reusing any clip that already exists:
@@ -660,8 +670,7 @@ processing continue through the existing worker.
 For a local installation, install `pip install -e '.[live]'`, provide FFmpeg with libx264 on PATH and
 a working VIAME installation, run `alembic upgrade head`, and run
 `python -m app.workers.live_worker` alongside the API. Set `VIAME_MOCK=false` and
-`LIVE_MONITOR_ENABLED=true` in both processes. The Docker API applies migrations through `0006_live_species_id`
-on startup.
+`LIVE_MONITOR_ENABLED=true` in both processes. The Docker API applies migrations to `head` on startup.
 
 Four cameras ship in the registry, and the dashboard dropdown selects which one the pipeline
 analyses:
@@ -704,7 +713,10 @@ Signed media URLs are never logged or returned by the API.
 | `CORAL_CITY_URL` | `https://www.coralcitycamera.com/` | Overrides the `coral-city` entry's URL |
 | `LIVE_LOST_TRACK_SECONDS` | `10` | Finalize after this interval without an observation |
 | `LIVE_SEGMENT_SECONDS` | `2` | Continuous FFmpeg capture chunk duration |
-| `LIVE_FPS` | `5` | Capture and VIAME sampling rate; capture is scaled to fit 1280×720 |
+| `LIVE_FPS` | `4` | Capture and VIAME sampling rate: one frame every 0.25 seconds |
+| `LIVE_CAPTURE_WIDTH` / `LIVE_CAPTURE_HEIGHT` | `1920` / `1080` | Capture bounds; retain source detail without upscaling smaller feeds |
+| `LIVE_SNAPSHOT_FPS` | `2` | How often the annotated view is republished; display only, never detection |
+| `LIVE_SNAPSHOT_MAX_WIDTH` | `1280` | Width cap for that published frame; larger captures are downscaled for it alone |
 | `LIVE_ACTIVITY_WINDOW_SECONDS` | `60` | Dashboard rolling window |
 | `LIVE_RETRY_SECONDS` / `LIVE_MAX_RETRY_SECONDS` | `3` / `30` | Exponential reconnect delay bounds |
 | `LIVE_MAX_RETRIES` | `10` | Consecutive retries before failing the session |
@@ -712,6 +724,8 @@ Signed media URLs are never logged or returned by the API.
 | `LIVE_DETECTOR_TIMEOUT_SECONDS` | `60` | Maximum VIAME time per chunk |
 | `LIVE_WORKER_STALE_SECONDS` | `120` | Recover abandoned sessions on worker startup/poll |
 | `LIVE_MAX_PENDING_SEGMENTS` | `3` | Backlog retained when inference falls behind |
+| `LIVE_RECORDING_ENABLED` | `true` | Keep analyzed chunks and publish the session as a video |
+| `LIVE_RECORDING_MAX_BYTES` | `8589934592` | Footage retained per session; `0` removes the cap |
 | `LIVE_SCRATCH_ROOT` | system temp dir | Short-lived per-frame crop spool; keep it on fast local disk |
 
 Size `LIVE_SEGMENT_SECONDS` against your VIAME startup cost. Every chunk starts a fresh pipeline, and
@@ -722,9 +736,37 @@ continuous coverage at the price of latency. Sampling rate is the other half of 
 reef `LIVE_FPS=5` cost about 30 seconds per 20-second chunk, while `LIVE_FPS=2` cost about 17 seconds
 and found nearly the same distinct fish. Measure one chunk on your own footage, then set the segment
 length above the measured time and `LIVE_DETECTOR_TIMEOUT_SECONDS` well above it (cold starts are
-slower). This deployment uses 60-second chunks at 2 fps with a 180-second timeout: on its GPU a
-60-second chunk costs about 37 seconds, so the worker stays ahead while the annotated view
-trails the camera by a chunk plus its inference time.
+slower). The former 2-FPS deployment used 60-second chunks with a 180-second timeout and
+measured about 37 seconds per chunk. The deployment now uses 4 FPS and preserves up to 1080p
+detail. See [the 60% confidence comparison](docs/live-recall-4fps.md) for measured results.
+
+Both halves of the budget have to fit, not just inference. The worker analyzes the next closed
+segment on the GPU while the current one's tracking, crops, clips and database writes run on the
+CPU, so a segment costs the larger of the two. On the reference box a 60-second chunk at 4 FPS
+and 1080p is roughly 54 seconds of inference against roughly 13 seconds of rendering, leaving
+inference as the constraint and little headroom: a cold start, a busier scene or another GPU job
+can still delay segments, and `LIVE_MAX_PENDING_SEGMENTS` bounds the backlog before frames are
+dropped. Rendering is dominated by writes to `OUTPUT_ROOT`, not by image processing — on a
+bind-mounted volume a single full-size JPEG can cost over 100 ms — which is why the annotated
+view is published at `LIVE_SNAPSHOT_FPS` rather than once per analyzed frame.
+
+`LIVE_FPS=2` means two frames per second (one every 0.5 seconds), not every second source
+frame. FFmpeg samples before VIAME; the live worker sets VIAME's downsample target to the same
+rate and consumes every decoded segment frame. Backlog limits and detector failures can also
+drop whole segments. The current 4 FPS doubles inference frames compared with 2 FPS and reduces
+motion steps. It can increase latency and dropped segments on a busy camera. Similar fish counts
+at two rates do not prove similar identity accuracy. The 60% acceptance floor uses original model
+scores; preserving input detail improves the detector's evidence rather than inflating scores.
+
+VIAME identities are local to each segment. Live association checks class, box area/aspect,
+normalized displacement and capture-time motion before accepting any ID hint. A short in-memory
+history survives segment boundaries. Only mutually best, unambiguous matches reuse a live track;
+uncertain observations start new tracks. Reassociation is limited to two capture seconds (or
+`LIVE_LOST_TRACK_SECONDS`, if shorter), with tighter motion checks after missed frames. The
+10-second lost-track setting retains media/history; it does not authorize a 10-second identity
+search. Expiry advances with analyzed capture timestamps, including empty frames and actual gaps,
+not wall-clock waits for capture or inference. Terminal failures and stop still finalize all tracks.
+See [live tracking diagnosis and regressions](docs/live-tracking.md) for the failure cases and limits.
 
 Keep `LIVE_SCRATCH_ROOT` on local disk. Each detection spools an annotated crop frame, and small-file
 writes to a bound volume are slow enough to decide whether inference keeps up: 420 crop writes take
@@ -738,12 +780,117 @@ activity. VIAME IDs are local to a chunk; spatial/species association carries tr
 These are tracking histories, not guaranteed identities of biological fish.
 
 Annotated crops and cropped MP4 clips use the existing track colors, box labels, and crop settings.
-Outputs live under `OUTPUT_ROOT/live/<session>/<track>/`; temporary source chunks are removed after
-processing and temporary crop frames after successful clip rendering. Final media and database
+Outputs live under `OUTPUT_ROOT/live/<session>/<track>/`; analyzed chunks are retained under
+`OUTPUT_ROOT/live/<session>/recording/` until the session's recording is assembled (see below) and
+removed after it, and temporary crop frames are removed after successful clip rendering. Final media and database
 observations are retained, so provision storage for long monitoring runs. A render failure preserves
 the crop and detections and is reported on the track. Failed VIAME runs retain diagnostic logs under
 the session's `inference` directory. A crashed worker's histories are finalized when
 a live worker next recovers its stale session; start a new session to resume monitoring.
+
+### Reviewing a finished session
+
+When a session stops, the footage it analyzed is assembled into one MP4 and appears in the library
+as an ordinary video, marked **Live**, with the camera as its camera ID. Its live fish histories are
+copied to that video as tracks and observations, so **Generate annotated video**, track review,
+fish clips and CSV exports all work on camera footage exactly as they do on an upload - there is no
+separate live annotation path and no manual step.
+
+The recording holds **exactly the frames that were analyzed, in the order they were analyzed**.
+Chunks the session skipped - dropped while inference was behind, failed in VIAME, or missed while
+reconnecting - were never counted in `frames_processed` and are never recorded, so a detection's
+frame number indexes the recording directly and no gap can shift a box onto the wrong frame. The
+recording is therefore continuous footage of what was analyzed, not a real-time record of the
+camera: a session that skipped a minute produces a video that is a minute shorter, and playback runs
+at `LIVE_FPS`, the rate detection sampled at, rather than the camera's native rate.
+
+Each chunk is kept only after its frames are committed to the database, and assembly is a stream
+copy of chunks FFmpeg already encoded, so an hour of footage assembles in seconds rather than a
+re-encode. Recordings are written to `UPLOAD_ROOT` as `live-<session>.mp4`; at 5 fps and 720p a
+session costs roughly 60 MB per hour. `LIVE_RECORDING_MAX_BYTES` bounds one session: once it is
+reached the session keeps monitoring and keeps recording fish histories, but stops retaining
+footage, and only observations of recorded frames are copied to the video. Set
+`LIVE_RECORDING_ENABLED=false` to keep the previous behaviour, where analyzed chunks are discarded
+and nothing reaches the library.
+
+To check the whole path without a GPU, VIAME or a camera, run
+`python scripts/validate_live_recording.py` (add `--serve` to review the result in the dashboard,
+or `--ffmpeg-bin` to point at a portable FFmpeg). It drives the real worker loop, recording writer
+and assembly over synthetic chunks and a stubbed detector, then annotates the result through the
+API. Camera resolution and VIAME are the only parts it does not cover.
+
+A recording failure never fails a session: the live histories, crops and clips are unaffected and
+the session reports that its footage could not be saved. A worker that crashes mid-session leaves
+its retained chunks on disk, and the recovery pass that finalizes the session publishes the footage
+it had analyzed. Tracks arrive `unreviewed` - live monitoring makes no review decisions - and
+**Process again** on a recording replaces them with a fresh VIAME run over the same footage.
+
+### Fish previews in the track table
+
+Every row of a video's track table leads with a small square crop of that fish, so
+an operator can see what they are reviewing instead of inferring it from figures.
+The crop comes from the sighting that shows the animal best - ranked by the same
+crop-size and confidence measures identification selects with, so the frame you are
+shown and the frame that would be sent are one judgement, not two.
+
+`GET /videos/{video_id}/thumbnails` generates any that are missing and returns
+`[{track_id, url}]`; `GET /tracks/{track_id}/thumbnail` serves one JPEG. Generation
+is **per video, in one pass**: reaching a frame means grabbing forward through the
+source (never seeking - a crop taken from the wrong frame would show the wrong
+fish), so producing one costs almost as much as producing all of them. A 2-minute
+720p recording with 27 tracks takes about two seconds; the results are cached beside
+the fish clips and served immutable, because a track id is replaced when processing
+reruns. A track whose crop could not be rendered is simply absent - a missing
+preview is a blank cell, never a table that will not load.
+
+`THUMBNAIL_ZOOM_MARGIN` (default 1.45) sets how much wider than the detection box to
+crop. Compared side by side on Coral City footage, 1.9 left the fish too small to
+name at table size and 1.45 fills the cell. The column can be turned off from the
+table's column menu.
+
+### Species reference photos
+
+A classifier returns *Gadus morhua*. An operator who cannot picture a cod has been
+handed a claim with no way to test it, and the honest reaction to an untestable claim
+is to believe it. So wherever a species name appears - the track table's Species and
+Fishial ID columns, a clip or live tile, the review queue, and the identification
+panel - the name carries a small photo of what that species actually looks like. The
+identification panel shows the largest one, beside the common name and the credit.
+
+**It is never the detected fish.** It is a stock portrait of the named species, and
+every surface says so; the fish's own crop sits next to it, and the two are what the
+operator compares.
+
+One lookup is made per species name, ever - not per fish, per track or per page. The
+answer is written to `SPECIES_REFERENCE_ROOT` as `<slug>.jpg` beside a `<slug>.json`
+sidecar recording the photographer, the licence and the source, and later requests are
+plain file reads. Photos come from [iNaturalist](https://www.inaturalist.org) and only
+openly licensed ones are stored: an all-rights-reserved photo is not ours to cache and
+re-serve, so where a taxon's top photo is one, the taxon's full photo list is read and
+the first openly licensed photo is taken instead. Names are matched **exactly** on the
+scientific name - a search engine's best guess for a name it does not hold would put
+the wrong animal beside a name an operator is being asked to check. A name with no
+usable photo is remembered as missing for a day and simply shows no image.
+
+`GET /species/reference?name=...` (repeat `name` for several) returns
+`[{species, slug, state, common_name, image_url, attribution, licence, source, source_url}]`;
+`GET /species/reference/<slug>.jpg` serves one. `state` is `found`, `missing`, or
+`unknown` - the last meaning the server has not looked yet, because one request looks
+up at most `SPECIES_REFERENCE_MAX_LOOKUPS_PER_REQUEST` new names and leaves the rest
+for the next one rather than holding a table open on third-party lookups.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `SPECIES_REFERENCE_ENABLED` | `true` | Set false for a deployment with no outbound network. |
+| `SPECIES_REFERENCE_ROOT` | `data/species-reference` | Cache directory. Drop your own `<slug>.jpg` files here and they are used as-is - which is how an air-gapped deployment supplies a reference set. |
+| `SPECIES_REFERENCE_ALLOWED_LICENCES` | `cc0,pd,cc-by,cc-by-sa,cc-by-nd,cc-by-nc,cc-by-nc-sa,cc-by-nc-nd` | The no-derivatives licences are included because the photo is shown whole, beside its credit, and is never cropped or composited. |
+| `SPECIES_REFERENCE_MAX_LOOKUPS_PER_REQUEST` | `8` | New names one request may fetch. |
+| `SPECIES_REFERENCE_RETRY_AFTER_SECONDS` | `86400` | How long a name with no photo is remembered as missing. |
+| `SPECIES_REFERENCE_MAX_BYTES` | `2097152` | Per-photo download ceiling. |
+| `SPECIES_REFERENCE_TIMEOUT_SECONDS` | `10` | Per-request timeout. |
+
+Nothing here is required for the dashboard to work: if the service is unreachable,
+disabled, or has no photo for a name, the name is drawn on its own exactly as before.
 
 ### Optional Fishial AI species identification
 
@@ -755,6 +902,17 @@ validation. Before starting, set **Identify species for the first N fish** (0 = 
 while a session is open, and unconfigured deployments hide them and reject nonzero N with 409.
 The per-session frame override accepts 1–20; choosing fewer than the configured voting minimum
 intentionally produces review required without image calls.
+
+> **Frame floors must be measured, not guessed.** `FISHIAL_MIN_FRAME_CONFIDENCE`
+> and `FISHIAL_MIN_CROP_PIXELS` are safety floors, and setting them above the data
+> silently disables the whole feature: measured over 411 detections of this
+> repository's own Coral City recording, the **0.70 / 96 px** pair kept **3.9%** of
+> frames (confidence p90 = 0.71, short side p90 = 103 px) while **0.50 / 40 px**
+> keeps **91.0%**. Compose shipped the 0.70/96 pair long after the code defaults
+> moved to 0.50/40, so deployments inherited floors that rejected almost every fish
+> before a single call was made. Both now default to the measured values in
+> `docker-compose.yml`, `.env.example` and `app/config.py` together. Any future
+> change to either number must cite a measured percentile.
 
 Only clean, expanded crops of already-detected fish go to the third-party **Fishial AI** API,
 and only with both opt-ins. Full frames, annotated crops, letterboxing, camera URLs, and
@@ -815,6 +973,82 @@ result is labelled **Fishial AI**; the VIAME species field remains unchanged. Th
 includes the full tally, frame numbers, scores, margins, raw responses, and abstention reasons.
 The gallery updates results without replacing playing videos. The session breakdown includes
 counts and mean confidence by identified species, review count, and image-call usage.
+
+### Identifying one chosen fish on demand
+
+The automatic pass above spends a budget fixed before a session starts, on whichever fish it
+ranks highest. **Identify species** is the other half: an operator picks one fish and how many
+frames to buy, and the system picks which frames those are. It is available wherever a fish is
+on screen — on a live tile, on a clip tile, in the track table's **Fishial ID** column, and in
+the track inspector — and it works on library recordings as well as on a running session,
+whether or not that session was started with automatic identification.
+
+`POST /tracks/{track_id}/identify` and `POST /live/tracks/{track_id}/identify` both take
+`{"frames": N}`, clamped to `FISHIAL_REQUEST_MAX_FRAMES` (default 12; `.env` sets the default
+offered in the dialog). Both claim the fish with a conditional state change, return **202**
+immediately, and do the work in a background task: reading footage and waiting on a classifier
+are far too slow to hold a request open. Poll `GET /tracks/{track_id}/identification` — or, for a
+live fish, the session's own track and clip endpoints — until the state leaves `submitted`. A
+fish the automatic pass has already selected (`pending`, `ready`, `submitted`) is refused with
+409 rather than paid for twice; a request whose process died is taken over after
+`FISHIAL_REQUEST_STALE_SECONDS`.
+
+Frames are read from the footage that actually holds the fish: a library video straight from its
+stored file, and a running session from the chunks `RecordingWriter` has retained so far, mapped
+through the recording manifest. Both are rectangular, source-resolution crops — never the
+annotated view or the letterboxed gallery clip.
+
+Selection applies the same rules as the automatic pass, in the same code
+(`app/services/species_quality.py`): reject frames below the safety floors, keep **at most one
+frame per `MIN_FRAME_SEPARATION_SECONDS` window**, shortlist three candidates for every frame
+requested, decode and measure those, and buy the best. **A fish seen for fewer independent
+moments than the frames requested is sent fewer frames, never the same instant twice** — the
+result reports `frames_requested`, `frames_selected` and `frames_submitted` separately so the
+difference is visible rather than silent. Voting, the regional filter and the early-stop rules
+are shared with the automatic pass, so `stopped_early` and the review diagnostics mean exactly
+what they mean there.
+
+**A request is deliberately more permissive than the automatic pass**, because the
+two answer different questions. The automatic pass spends an unattended budget and
+must protect it from junk crops; a request is one operator pointing at one fish and
+authorising that spend, so re-applying floors calibrated for unattended spending
+just returns "no answer" about a fish they can plainly see. Every
+`FISHIAL_REQUEST_*` setting below overrides its unprefixed counterpart, and only for
+requested identifications - `request_settings()` builds one relaxed copy of the
+settings and passes it down, so selection, voting, consensus and the stop rules stay
+*the same code* rather than a second implementation that quietly drifts.
+
+| | Automatic | Requested | Why |
+| --- | --- | --- | --- |
+| `MIN_FRAME_CONFIDENCE` | 0.50 | 0.00 | `MIN_FISH_CONFIDENCE` already gated these boxes; a second floor only re-rejects fish the operator can see |
+| `MIN_CROP_PIXELS` | 40 | 24 | a small fish is exactly the one someone asks about |
+| `EDGE_MARGIN_PIXELS` | 4 | 0 | a partly cut-off fish is often still nameable |
+| `MIN_VOTES` / `MIN_FRAMES_TO_VOTE` | 3 / 3 | 2 / 1 | with 3–5 frames bought, 3-of-3 means near-unanimity or nothing, and "nothing" cannot be acted on |
+| `VOTE_RATIO` | 0.6 | 0.5 | two of the frames sent agreeing is still evidence |
+| `MIN_SPECIES_SCORE` | 0.5 | 0.35 | a moderate score is a suggestion worth showing |
+| `MAX_EMPTY_RESPONSES` | 2 | 0 (off) | the operator asked for these frames; spend them |
+| `REGION_FILTER_ENABLED` | true | false | see below |
+
+**Regional plausibility flags a requested result instead of discarding it.** An
+unattended session drops a name its camera's region list does not recognise, because
+nobody is there to judge it. A request reports the name *with* the warning and
+`implausible_for_region` set, and the panel says "Not expected at this camera —
+treat it as a suggestion, not a record". Dropping it silently would leave an
+operator with an unexplained blank, which is the worse of the two failures.
+
+**Frames fill the request after covering every moment.** One frame per
+`MIN_FRAME_SEPARATION_SECONDS` window is taken before any window is used twice, so
+the strongest *independent* evidence is always bought first. Once every moment has
+contributed, the next-best frames fill out the count that was paid for: a
+second-best view of the same moment is weaker evidence than a new moment, but much
+better evidence than none. `windows` in the result reports how many distinct moments
+are actually behind an answer, and the panel says so when it is fewer than the
+frames sent.
+
+Requested calls are journalled before sending, exactly as the automatic pass reserves. For a live
+fish they are counted in `species_id_manual_api_calls`, **separately** from
+`species_id_api_calls`: the two are authorised differently, and an operator asking about one fish
+must never starve the budget the session was told to spend.
 
 **Hard ceiling: `N * M + FISHIAL_MAX_API_RETRIES` image requests per session.**
 `SpeciesIdentifier._reserve()` uses a conditional SQL increment immediately before *every*

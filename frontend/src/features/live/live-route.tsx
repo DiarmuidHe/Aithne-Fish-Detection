@@ -29,6 +29,9 @@ import { useToast } from '@/components/base/toast';
 import { PlayIcon, StopIcon } from '@/icons';
 import { useDocumentVisible } from '@/hooks/use-poll';
 import { formatClock, formatCount, formatPercent, plural } from '@/lib/format';
+import { IdentifyFishButton } from '@/features/species/identify-fish';
+import { SpeciesNameplate, SpeciesThumb } from '@/features/species/species-reference';
+import { AssignSpeciesButton } from '@/features/species/species-selector';
 
 import styles from './live.module.css';
 
@@ -485,7 +488,10 @@ export function LiveRoute() {
           <dl className={styles.speciesList}>
             {species.data.species.map((entry) => (
               <div className={styles.speciesRow} key={entry.species}>
-                <dt className={styles.speciesName}>{entry.species}</dt>
+                <dt className={styles.speciesName}>
+                  <SpeciesThumb name={entry.species} size="row" />
+                  <span>{entry.species}</span>
+                </dt>
                 <dd className={styles.speciesCount}>{plural(entry.count, 'fish')}</dd>
                 <dd className={styles.speciesCount}>
                   {formatPercent(entry.mean_confidence, 0)} mean
@@ -498,6 +504,9 @@ export function LiveRoute() {
             {species.data.review_required} need review ·{' '}
             {species.data.declined > 0 ? `${species.data.declined} not named by the model · ` : ''}
             {species.data.api_calls} Fishial image calls ({species.data.calls_saved} saved)
+            {session.species_id.manual_api_calls > 0
+              ? ` · ${session.species_id.manual_api_calls} requested by hand`
+              : ''}
             {Object.entries(species.data.review_reasons)
               .map(([reason, count]) => ` · ${count} ${reason}`)
               .join('')}
@@ -513,12 +522,15 @@ export function LiveRoute() {
  * species and the figures are the label written under it.
  */
 function LiveTile({ track }: { track: LiveTrack }) {
+  // A name a person put on outranks the classifier's, which outranks the
+  // detector's class; the tile has room for one, and that is the order.
   const name =
-    track.fishial_state === 'identified' ? track.fishial_species : (track.species ?? 'Fish');
+    track.manual_species ??
+    (track.fishial_state === 'identified' ? track.fishial_species : (track.species ?? 'Fish'));
   const state = track.fishial_state;
   const flagTone =
-    state === 'identified' ? 'named' : state === 'review_required' || state === 'error'
-      ? 'flagged'
+    track.manual_species || state === 'identified' ? 'named'
+      : state === 'review_required' || state === 'error' ? 'flagged'
       : 'neutral';
 
   return (
@@ -540,23 +552,49 @@ function LiveTile({ track }: { track: LiveTrack }) {
           <img src={track.crop_url} alt={`Annotated crop of ${name}`} loading="lazy" />
         ) : null
       }
-      title={name ?? 'Fish'}
+      title={
+        (track.manual_species || track.fishial_state === 'identified') && name ? (
+          <SpeciesNameplate name={name} size="tile" />
+        ) : (
+          (name ?? 'Fish')
+        )
+      }
       subtitle={track.id.slice(0, 8)}
       flag={badgeFor(track) || undefined}
       meta={`${track.detection_count} detections · ${formatPercent(track.max_confidence, 0)} · ${formatClock(track.last_seen_at)}`}
       footnote={track.media_error ?? undefined}
       actions={
-        track.crop_url ? (
-          <AnchorButton variant="quiet" size="small" href={track.crop_url}>
-            Crop
-          </AnchorButton>
-        ) : null
+        <>
+          {/* Naming a fish is the action an operator reaches for while watching,
+              so it sits on the fish itself rather than behind the session. */}
+          <IdentifyFishButton
+            kind="live"
+            trackId={track.id}
+            state={track.fishial_state}
+            variant="quiet"
+            label="Identify"
+          />
+          <AssignSpeciesButton
+            kind="live"
+            trackId={track.id}
+            current={track.manual_species}
+            identification={track.identification}
+            variant="quiet"
+            label={track.manual_species ? 'Change name' : 'Name it'}
+          />
+          {track.crop_url ? (
+            <AnchorButton variant="quiet" size="small" href={track.crop_url}>
+              Crop
+            </AnchorButton>
+          ) : null}
+        </>
       }
     />
   );
 }
 
 function badgeFor(track: LiveTrack): string {
+  if (track.manual_species) return 'Named by hand';
   const state = track.fishial_state;
   if (state === 'identified') {
     return `Named · ${formatPercent(track.fishial_species_confidence ?? 0, 0)}`;

@@ -17,7 +17,14 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.db.models import LiveFishDetection, LiveFishTrack, LiveMonitorSession
 from app.services import video_media
-from app.services.species_quality import frame_score, pool_score, preprocess_crop
+from app.services.species_quality import (
+    crop_for_fishial,
+    crop_measures,
+    frame_score,
+    is_clear_frame,
+    pool_score,
+    preprocess_crop,
+)
 from app.services.video_annotator import FrameAnnotation, _draw_annotation
 
 logger = logging.getLogger(__name__)
@@ -57,14 +64,15 @@ def stored_media_path(settings: Settings, session_id, value: str | None) -> Path
     return path if path.is_file() else None
 
 
-def similarity(track, box) -> float:
-    x1, y1, x2, y2 = box
-    intersection = max(0, min(track.x2, x2) - max(track.x1, x1)) * max(0, min(track.y2, y2) - max(track.y1, y1))
-    union = (track.x2 - track.x1) * (track.y2 - track.y1) + (x2 - x1) * (y2 - y1) - intersection
-    iou = intersection / union if union > 0 else 0
-    distance = math.hypot((x1 + x2 - track.x1 - track.x2) / 2, (y1 + y2 - track.y1 - track.y2) / 2)
-    scale = max(x2 - x1, y2 - y1, track.x2 - track.x1, track.y2 - track.y1, 1)
-    return iou if iou >= .15 else (.1 * (1 - distance / scale) if distance < scale else 0)
+def box_iou(a, b) -> float:
+    intersection = max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - intersection
+    return intersection / union if union > 0 else 0
+
+
+def center_distance(a, b) -> float:
+    return math.hypot((a[0] + a[2] - b[0] - b[2]) / 2,
+                      (a[1] + a[3] - b[1] - b[3]) / 2)
 
 
 class LiveTracker:
@@ -76,8 +84,18 @@ class LiveTracker:
         self.active = {t.id: t for t in db.scalars(select(LiveFishTrack).where(
             LiveFishTrack.session_id == session.id, LiveFishTrack.status == "active"))}
         self.chunk_ids: dict[str, uuid.UUID] = {}
+        # One previous observation plus the current DB box gives velocity. Keep it
+        # across segments, but never extrapolate old motion after a long absence.
+        # A worker reload safely falls back to matching without motion history.
+        self.previous: dict[uuid.UUID, tuple[datetime, tuple]] = {}
         self.pool: dict[uuid.UUID, dict] = {}
         self.staged_bytes = 0
+        # Creating a directory that already exists still costs a round trip to the
+        # output volume, and on a bind mount that is milliseconds per detection.
+        self._created: set[Path] = set()
+        # Capture time, not wall time, so the published rate is the same whether a
+        # segment is rendered live or replayed from storage.
+        self._snapshot_at: float | None = None
         if settings.fishial_enabled and session.species_id_enabled:
             self._load_candidate_pool()
 
@@ -138,6 +156,88 @@ class LiveTracker:
         root = scratch_path(self.settings, str(self.session.id))
         self.staged_bytes = sum(path.stat().st_size for path in root.glob("*/fishial/*.jpg"))
 
+    def _association_cost(self, track, obs, box, observed_at):
+        """Return a gated motion/geometry cost; a VIAME ID cannot bypass a gate.
+
+        Distances are in fish-box lengths, times are capture seconds. The short
+        recovery horizon is deliberately independent of media finalization: ten
+        seconds of retained crops is not ten seconds of reliable identity evidence.
+        """
+        elapsed = (observed_at - aware(track.last_seen_at)).total_seconds()
+        horizon = min(2.0, self.settings.live_lost_track_seconds)
+        if elapsed <= 0 or elapsed > horizon:
+            return None
+        if track.species and obs.class_name and track.species.casefold() != obs.class_name.casefold():
+            return None
+        last = (track.x1, track.y1, track.x2, track.y2)
+        old_w, old_h = last[2] - last[0], last[3] - last[1]
+        new_w, new_h = box[2] - box[0], box[3] - box[1]
+        if min(old_w, old_h, new_w, new_h) <= 0:
+            return None
+        area_ratio = new_w * new_h / (old_w * old_h)
+        aspect_ratio = (new_w / new_h) / (old_w / old_h)
+        if not .5 <= area_ratio <= 2 or not .5 <= aspect_ratio <= 2:
+            return None
+        scale = max(1, min(max(old_w, old_h), max(new_w, new_h)))
+        # Bounded displacement even for a matching local ID; allow startup motion
+        # of up to three box lengths/second plus modest detector jitter.
+        if center_distance(last, box) / scale > .35 + 3 * elapsed:
+            return None
+        missed = (elapsed > 1.5 / self.settings.live_fps or
+                  (self.session.last_frame_at is not None and
+                   aware(self.session.last_frame_at) > aware(track.last_seen_at)))
+        prediction = last
+        previous = self.previous.get(track.id)
+        has_motion = False
+        if previous is not None:
+            timestamp, prior = previous
+            period = (aware(track.last_seen_at) - timestamp).total_seconds()
+            if 0 < period <= horizon:
+                dx = (last[0] + last[2] - prior[0] - prior[2]) / 2 * elapsed / period
+                dy = (last[1] + last[3] - prior[1] - prior[3]) / 2 * elapsed / period
+                prediction = (last[0] + dx, last[1] + dy, last[2] + dx, last[3] + dy)
+                has_motion = True
+        distance = center_distance(prediction, box) / scale
+        iou = box_iou(prediction, box)
+        if has_motion:
+            # Missed observations reduce certainty; do not widen the search into
+            # neighbouring fish or fall back to the abandoned last box.
+            if distance > (.4 if missed else .75):
+                return None
+        elif missed:
+            if distance > .25 or iou < .5:
+                return None
+        elif distance > min(1.5, .35 + 3 * elapsed):
+            return None
+        cost = distance + .25 * (1 - iou) + .1 * (abs(math.log(area_ratio)) + abs(math.log(aspect_ratio)))
+        cost += .15 if missed else 0
+        # A small hint, less than the ambiguity margin, never absolute identity.
+        return cost - (.03 if self.chunk_ids.get(obs.track_id) == track.id else 0)
+
+    def _associate(self, candidates, observed_at):
+        by_observation, by_track = {}, {}
+        for index, (obs, box) in enumerate(candidates):
+            for track in self.active.values():
+                cost = self._association_cost(track, obs, box, observed_at)
+                if cost is not None:
+                    by_observation.setdefault(index, []).append((cost, track.id))
+                    by_track.setdefault(track.id, []).append((cost, index))
+        for choices in (*by_observation.values(), *by_track.values()):
+            choices.sort(key=lambda item: item[0])
+
+        def unambiguous(choices):
+            return len(choices) == 1 or choices[1][0] - choices[0][0] >= .15
+
+        assigned = {}
+        for index, choices in by_observation.items():
+            track_id = choices[0][1]
+            reverse = by_track[track_id]
+            # Mutual best matches only. Never let greedy removal turn an ambiguous
+            # runner-up into a confident identity, in either direction.
+            if unambiguous(choices) and unambiguous(reverse) and reverse[0][1] == index:
+                assigned[index] = self.active[track_id]
+        return assigned
+
     def process_frame(self, frame, observations, observed_at: datetime):
         observed_at = aware(observed_at)
         self.expire(observed_at)
@@ -152,24 +252,10 @@ class LiveTracker:
                    min(width - 1, obs.bbox_right), min(height - 1, obs.bbox_bottom))
             if box[2] > box[0] and box[3] > box[1]:
                 candidates.append((obs, box))
-        assigned, used = {}, set()
-        for index, (obs, box) in enumerate(candidates):
-            track_id = self.chunk_ids.get(obs.track_id)
-            if track_id in self.active and track_id not in used:
-                assigned[index] = self.active[track_id]
-                used.add(track_id)
-        pairs = sorted(
-            [(similarity(t, box), index, str(t.id))
-             for index, (obs, box) in enumerate(candidates) if index not in assigned
-             for t in self.active.values() if t.id not in used
-             and (not t.species or not obs.class_name or t.species == obs.class_name)],
-            reverse=True,
-        )
-        for score, index, track_id in pairs:
-            key = uuid.UUID(track_id)
-            if score > 0 and index not in assigned and key not in used:
-                assigned[index] = self.active[key]
-                used.add(key)
+        assigned = self._associate(candidates, observed_at)
+        # Drop aliases from missed frames and former VIAME IDs. They are only
+        # hints for the next observation, never a route back into an old track.
+        self.chunk_ids.clear()
         annotated = frame.copy()
         for index, (obs, box) in enumerate(candidates):
             track = assigned.get(index)
@@ -182,6 +268,9 @@ class LiveTracker:
                 self.db.flush()
                 self.active[track.id] = track
             self.chunk_ids[obs.track_id] = track.id
+            if track.detection_count:
+                self.previous[track.id] = (aware(track.last_seen_at),
+                    (track.x1, track.y1, track.x2, track.y2))
             track.mean_confidence = (track.mean_confidence * track.detection_count + obs.confidence) / (track.detection_count + 1)
             track.detection_count += 1
             best = obs.confidence >= track.max_confidence
@@ -208,72 +297,20 @@ class LiveTracker:
                 track.media_error = "Some annotated crops could not be written; detections are unaffected"
         self.session.frames_processed += 1
         self.session.last_frame_at = observed_at
-        path = live_path(self.settings, str(self.session.id), "annotated.jpg")
         try:
-            self._write_jpeg(path, annotated)
+            published = self._publish_snapshot(annotated, observed_at)
         except OSError:
             # The annotated view is a live convenience; the next frame refreshes it.
             logger.warning("Live annotated frame could not be published", exc_info=True)
         else:
-            self.session.snapshot_path = str(path)
+            if published:
+                self.session.snapshot_path = str(self.root / "annotated.jpg")
 
     def _is_clear_frame(self, frame, box, confidence) -> bool:
-        """Safety floor only: reject frames that are genuinely unusable.
-
-        This is NOT selection. The previous 0.70 confidence / 96 px pair sat above the
-        90th percentile of both measurements on both reference cameras and rejected
-        96.8% (Coral City) and 85.9% (SmartBay 3) of detections conjunctively, which
-        is why no track ever reached ``fishial_min_frames_to_vote``. Selection is the
-        per-track ranking in ``_stage_species_crop``; this only excludes junk.
-        """
-
-        height, width = frame.shape[:2]
-        x1, y1, x2, y2 = box
-        s = self.settings
-        if not all(math.isfinite(v) for v in (*box, confidence)):
-            return False
-        if (not s.fishial_min_frame_confidence <= confidence <= 1
-                or min(x2 - x1, y2 - y1) < s.fishial_min_crop_pixels
-                # A fish crossing the frame edge is truncated, so the crop cannot show
-                # the whole animal. That is a correctness floor, not a quality one.
-                or min(x1, y1, width - 1 - x2, height - 1 - y2) < s.fishial_edge_margin_pixels):
-            return False
-        if s.fishial_blur_min_variance:
-            crop = frame[math.floor(y1):math.ceil(y2), math.floor(x1):math.ceil(x2)]
-            gray = self.cv2.cvtColor(crop, self.cv2.COLOR_BGR2GRAY)
-            if self.cv2.Laplacian(gray, self.cv2.CV_64F).var() < s.fishial_blur_min_variance:
-                return False
-        return True
+        return is_clear_frame(self.cv2, frame, box, confidence, self.settings)
 
     def _frame_quality(self, frame, box, confidence) -> dict:
-        """Per-frame measurements the ranker and the selector both need.
-
-        Computed once while the frame is in hand, then persisted into the ``staged``
-        audit entry, so nothing has to re-decode pixels later. Cheap, but still kept
-        off the path that runs for non-candidate detections.
-        """
-
-        height, width = frame.shape[:2]
-        x1, y1, x2, y2 = box
-        crop = frame[max(0, math.floor(y1)):min(height, math.ceil(y2)),
-                     max(0, math.floor(x1)):min(width, math.ceil(x2))]
-        measures = {"confidence": float(confidence),
-                    "short_side": float(min(x2 - x1, y2 - y1)),
-                    "sharpness": 0.0, "luminance": 0.0, "contrast": 0.0, "colorfulness": 0.0}
-        if crop.size == 0:
-            return measures
-        gray = self.cv2.cvtColor(crop, self.cv2.COLOR_BGR2GRAY)
-        measures["sharpness"] = float(self.cv2.Laplacian(gray, self.cv2.CV_64F).var())
-        lightness = self.cv2.cvtColor(crop, self.cv2.COLOR_BGR2LAB)[:, :, 0].astype("float64")
-        measures["luminance"] = float(lightness.mean())
-        measures["contrast"] = float(lightness.std())  # RMS contrast of L
-        blue, green, red = (channel.astype("float64") for channel in self.cv2.split(crop))
-        # Hasler-Susstrunk colourfulness: dim green water scores near zero, which is
-        # exactly the domain mismatch Fishial's classifier appears to dislike.
-        rg, yb = red - green, 0.5 * (red + green) - blue
-        measures["colorfulness"] = float(
-            math.hypot(rg.std(), yb.std()) + 0.3 * math.hypot(rg.mean(), yb.mean()))
-        return measures
+        return crop_measures(self.cv2, frame, box, confidence)
 
     def _preprocess_crop(self, crop):
         """Optional underwater correction, applied ONLY to the staged Fishial crop.
@@ -384,27 +421,10 @@ class LiveTracker:
             victim = min(staged, key=lambda item: item["score"])
             if score <= victim["score"]:
                 return
-        x1, y1, x2, y2 = box
-        height, width = frame.shape[:2]
-        dx = (x2 - x1) * (self.settings.fishial_crop_margin - 1) / 2
-        dy = (y2 - y1) * (self.settings.fishial_crop_margin - 1) / 2
-        left, top = max(0, math.floor(x1 - dx)), max(0, math.floor(y1 - dy))
-        right, bottom = min(width, math.ceil(x2 + dx)), min(height, math.ceil(y2 + dy))
-        # Rectangular, original-resolution crop; never use the annotated/letterbox spool.
-        crop = frame[top:bottom, left:right]
-        if crop.shape[:2] == frame.shape[:2]:
-            # Even an extreme admin crop margin must never turn this into a full-frame upload.
+        cropped = crop_for_fishial(self.cv2, frame, box, self.settings)
+        if cropped is None:
             return
-        # Store the expected box as it actually is, clamping included: at a frame edge
-        # the fish is no longer centred, and recomputing a centred box later would
-        # match the wrong object.
-        expected = [(x1 - left) / (right - left), (y1 - top) / (bottom - top),
-                    (x2 - left) / (right - left), (y2 - top) / (bottom - top)]
-        ok, encoded = self.cv2.imencode(".jpg", crop,
-                                        [self.cv2.IMWRITE_JPEG_QUALITY, 95])
-        if not ok:
-            raise OSError("Species crop encoding failed")
-        payload = encoded.tobytes()
+        payload, expected, crop_size = cropped
         if not self._enforce_byte_cap(len(payload), track.id):
             return
         directory = scratch_path(self.settings, str(self.session.id), str(track.id), "fishial")
@@ -422,7 +442,7 @@ class LiveTracker:
                        "score": score, "expected_box": expected, "quality": quality,
                        # Recorded so the offline replay harness can resolve the same
                        # multi-object match without re-reading the JPEG.
-                       "crop_size": [right - left, bottom - top]})
+                       "crop_size": crop_size})
         staged.sort(key=lambda item: item["frame_number"])
         audit["staged"], audit["window_origin"] = staged, origin
         entry["score"] = pool_score(staged, self.settings.fishial_quality_weights)
@@ -449,6 +469,33 @@ class LiveTracker:
         directory = live_path(self.settings, str(self.session.id), str(track.id), "fishial")
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f"{frame_number:012d}.jpg").write_bytes(payload)
+
+    def _ensure_directory(self, path: Path) -> Path:
+        if path not in self._created:
+            path.mkdir(parents=True, exist_ok=True)
+            self._created.add(path)
+        return path
+
+    def _publish_snapshot(self, frame, observed_at: datetime) -> bool:
+        """Publish the annotated view, at most ``live_snapshot_fps`` times a second.
+
+        The dashboard polls this file every two seconds and the detections are
+        already recorded, so a skipped frame costs nothing but a little smoothness.
+        Downscaling only the published copy keeps the operator's view the size it
+        was before capture moved to 1080p, while the detector still sees full detail.
+        """
+
+        moment = observed_at.timestamp()
+        if self._snapshot_at is not None and moment - self._snapshot_at < 1 / self.settings.live_snapshot_fps:
+            return False
+        width = frame.shape[1]
+        limit = self.settings.live_snapshot_max_width
+        if width > limit:
+            height = max(1, round(frame.shape[0] * limit / width))
+            frame = self.cv2.resize(frame, (limit, height), interpolation=self.cv2.INTER_AREA)
+        self._write_jpeg(self.root / "annotated.jpg", frame)
+        self._snapshot_at = moment
+        return True
 
     def _write_jpeg(self, path, frame):
         temp = path.with_name(path.stem + ".tmp.jpg")
@@ -484,13 +531,11 @@ class LiveTracker:
         scaled = self.cv2.resize(crop, (max(1, round(crop.shape[1] * ratio)), max(1, round(crop.shape[0] * ratio))))
         y, x = (size - scaled.shape[0]) // 2, (size - scaled.shape[1]) // 2
         output[y:y + scaled.shape[0], x:x + scaled.shape[1]] = scaled
-        directory = live_path(self.settings, str(self.session.id), str(track.id))
-        directory.mkdir(parents=True, exist_ok=True)
         spool = scratch_path(self.settings, str(self.session.id), str(track.id), "frames")
-        spool.mkdir(parents=True, exist_ok=True)
+        self._ensure_directory(spool)
         self._write_jpeg(spool / f"{annotation.frame_number:012d}.jpg", output)
         if best:
-            path = directory / "crop.jpg"
+            path = self._ensure_directory(self.root / str(track.id)) / "crop.jpg"
             self._write_jpeg(path, output)
             track.crop_path = str(path)
 
@@ -507,13 +552,17 @@ class LiveTracker:
                     # Scratch frames outlive nothing: drop them even when the clip failed.
                     root = scratch_path(self.settings, str(self.session.id), str(track.id))
                     shutil.rmtree(root / "frames", ignore_errors=True)
+                    # The cache records what exists, so forget what was just removed.
+                    self._created.discard(root / "frames")
                     # Clean identification crops must survive until the between-segment pass.
                     if not (root / "fishial").exists():
                         shutil.rmtree(root, ignore_errors=True)
                 del self.active[track.id]
+                self.previous.pop(track.id, None)
+        self.chunk_ids = {key: value for key, value in self.chunk_ids.items() if value in self.active}
 
     def _render_clip(self, track):
-        directory = live_path(self.settings, str(self.session.id), str(track.id))
+        directory = self._ensure_directory(self.root / str(track.id))
         spool = scratch_path(self.settings, str(self.session.id), str(track.id), "frames")
         frames = sorted(spool.glob("*.jpg"))
         if not frames:

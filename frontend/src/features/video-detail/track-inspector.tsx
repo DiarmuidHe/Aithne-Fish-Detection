@@ -1,13 +1,14 @@
 import * as React from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
-import { fetchTrack, generateTrackClip, trackClipUrl } from '@/api/tracks';
+import { fetchTrack, fetchTrackIdentification, generateTrackClip, trackClipUrl } from '@/api/tracks';
 import { fetchVideo, sourceVideoUrl } from '@/api/videos';
 import { Button } from '@/components/base/button';
 import { PanelError, Skeleton } from '@/components/base/feedback';
 import { Modal } from '@/components/base/popups';
 import { DataTable, Scroller } from '@/components/base/table';
 import { formatPercent, formatSeconds } from '@/lib/format';
+import { IdentificationPanel } from '@/features/species/identify-fish';
 
 import styles from './detail.module.css';
 
@@ -32,6 +33,15 @@ export function TrackInspector({
     queryKey: ['video', track.data?.video_id],
     queryFn: () => fetchVideo(track.data?.video_id as string),
     enabled: Boolean(track.data?.video_id),
+  });
+
+  // Polled while a request is in flight: the answer lands in a background task,
+  // so nothing else on this screen would tell us it arrived.
+  const identification = useQuery({
+    queryKey: ['track-identification', trackId],
+    queryFn: () => fetchTrackIdentification(trackId as string),
+    enabled: Boolean(trackId),
+    refetchInterval: (query) => (query.state.data?.state === 'submitted' ? 2_000 : false),
   });
 
   const clip = useMutation({ mutationFn: () => generateTrackClip(trackId as string) });
@@ -100,6 +110,17 @@ export function TrackInspector({
                 title="Clip was not created"
                 message={clip.error instanceof Error ? clip.error.message : 'Clip failed'}
                 onRetry={() => clip.mutate()}
+              />
+            ) : null}
+
+            {/* Naming the fish belongs beside the footage of it, not in a menu. */}
+            {identification.data ? (
+              <IdentificationPanel
+                kind="track"
+                trackId={track.data.id}
+                identification={identification.data}
+                manualSpecies={track.data.manual_species}
+                manualSpeciesAt={track.data.manual_species_at}
               />
             ) : null}
           </div>

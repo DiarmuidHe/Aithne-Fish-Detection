@@ -63,7 +63,7 @@
   position: absolute;
   inset: 0 0 auto;
   height: 2px;
-  background: var(--status-flagged);
+  background: var(--status-flagged-edge);
 }
 
 /* --- Actions ----------------------------------------------------------------
@@ -79,7 +79,7 @@
   gap: var(--space-1);
   padding: 2px;
   border-radius: var(--radius-control);
-  background: rgb(10 20 24 / 72%);
+  background: var(--media-overlay);
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-out);
 }
@@ -96,7 +96,7 @@
 
 .actions a,
 .actions button {
-  color: #e8eef0;
+  color: var(--media-ink);
 }
 
 /* --- Caption ---------------------------------------------------------------- */
@@ -155,11 +155,11 @@
 }
 
 .tile[data-flag='flagged'] .flagDot {
-  background: var(--status-flagged);
+  background: var(--status-flagged-edge);
 }
 
 .tile[data-flag='named'] .flagDot {
-  background: var(--status-completed);
+  background: var(--status-completed-edge);
 }
 
 .meta {

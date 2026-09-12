@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.api import analytics, batch, exports, jobs, live, system, tracks, videos
+from app.api import analytics, batch, exports, jobs, live, species, system, tracks, videos
 from app.config import Settings, get_settings
 from app.db.database import init_db
 
@@ -18,6 +18,7 @@ from app.db.database import init_db
 API_PREFIXES = frozenset(
     {
         "videos", "jobs", "tracks", "system", "batch", "exports", "analytics", "live",
+        "species",
         "health", "static", "legacy", "docs", "redoc", "openapi.json",
     }
 )
@@ -97,6 +98,7 @@ app.include_router(batch.router)
 app.include_router(exports.router)
 app.include_router(analytics.router)
 app.include_router(live.router)
+app.include_router(species.router)
 
 
 @app.get("/health")

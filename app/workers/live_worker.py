@@ -18,6 +18,7 @@ from app.db.database import SessionLocal
 from app.db.models import LIVE_OPEN_STATUSES, LiveMonitorSession, utc_now
 from app.services.fish_enhancement import initialize_enhancement
 from app.services.live_monitor import LiveTracker, live_path, scratch_path
+from app.services.live_recording import RecordingWriter, finalize_live_recording
 from app.services.live_source import LiveSourceError, SegmentCapture, resolve_stream
 from app.services.live_species import SpeciesIdentifier
 from app.services.viame_parser import parse_viame_csv
@@ -47,6 +48,36 @@ def detect_segment(segment, settings, session_id):
         directory = live_path(settings, str(session_id), "inference", str(job_id))
         if succeeded and directory.exists():
             shutil.rmtree(directory)
+
+
+def finish_recording(db, session, settings, recorder=None):
+    """Publish the session's footage as a reviewable video in the library.
+
+    Never fails the session: the live histories, crops and clips stand on their
+    own, so a recording problem is reported and left at that.
+    """
+
+    if not settings.live_recording_enabled:
+        shutil.rmtree(live_path(settings, str(session.id), "recording"), ignore_errors=True)
+        return None
+    try:
+        video = finalize_live_recording(db, session, settings, recorder)
+    except Exception:
+        logger.exception("Live recording could not be prepared for session %s", session.id)
+        db.rollback()
+        try:
+            db.refresh(session)
+            if not session.error_message:
+                session.error_message = ("Monitoring finished, but the footage could not be saved "
+                                         "for review; the fish histories are unaffected")
+                db.commit()
+        except Exception:
+            logger.exception("Live session %s could not be updated after a recording failure",
+                             session.id)
+        return None
+    if video is not None:
+        logger.info("Live session %s is in the library as video %s", session.id, video.id)
+    return video
 
 
 def claim_session(factory, worker_id):
@@ -86,6 +117,9 @@ def recover_stale_sessions(factory, settings):
                 finally:
                     identifier.close()
                     shutil.rmtree(scratch_path(settings, str(session.id)), ignore_errors=True)
+                # The chunks the lost worker retained are still on disk, so the
+                # footage it did analyze is still worth publishing.
+                finish_recording(db, session, settings)
 
 
 def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
@@ -124,6 +158,7 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
         thread.start()
         capture, pending, segment = None, None, None
         tracker = None
+        recorder = RecordingWriter(session_id, settings) if settings.live_recording_enabled else None
         retries, retry_at = 0, 0.0
         executor = ThreadPoolExecutor(max_workers=1)
         final_status, error = "stopped", None
@@ -158,34 +193,62 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
                         shutdown.wait(.2)
                         continue
                     pending = None
+                    following = None
+                    try:
+                        following = capture.next_segment()
+                    except LiveSourceError:
+                        # Commit the completed footage first. The normal capture
+                        # path below handles reconnects after rendering this segment.
+                        pass
+                    if capture.dropped:
+                        session.dropped_segments += capture.dropped
+                        capture.dropped = 0
+                    if following is not None:
+                        # One GPU future only: analyze the next closed segment while
+                        # CPU rendering/DB writes apply this one in capture order.
+                        # Adding their costs serially makes 4-FPS capture fall behind.
+                        pending = executor.submit(detector, following, settings, session_id)
                     by_frame = defaultdict(list)
                     for observation in observations:
                         by_frame[observation.frame_number].append(observation)
                     cv2 = tracker.cv2
                     reader = cv2.VideoCapture(str(segment.path))
                     tracker.begin_segment()
-                    index = 0
+                    index, shape = 0, None
                     try:
                         while True:
                             ok, frame = reader.read()
                             if not ok:
                                 break
+                            shape = frame.shape[:2]
                             tracker.process_frame(frame, by_frame.get(index, []),
                                 segment.started_at + timedelta(seconds=index / settings.live_fps))
                             index += 1
                     finally:
                         reader.release()
+                    try:
+                        if not index:
+                            raise LiveSourceError("Captured camera segment could not be decoded")
+                        session.status, session.error_message = "running", None
+                        retries = 0
+                        db.commit()
+                        # Retained only once its frames are committed, so the recording
+                        # holds exactly the frames the session counted. A chunk kept
+                        # after a rollback would shift every later box by its length.
+                        if recorder is not None:
+                            recorder.append(segment.path, index, shape[1], shape[0])
+                    finally:
                         segment.path.unlink(missing_ok=True)
-                    if not index:
-                        raise LiveSourceError("Captured camera segment could not be decoded")
-                    session.status, session.error_message = "running", None
-                    retries = 0
-                    db.commit()
                     identifier.run_safely()
-                # Expiry follows capture timestamps. In-flight chunks must be applied first;
-                # inference latency is exposed by the API rather than rewriting timestamps.
+                    if following is not None:
+                        segment = following
+                        continue
+                # Only process_frame advances lost-track expiry on capture time.
+                # While capture is writing or retrying, wall time can be a whole
+                # segment plus inference ahead of unprocessed observations. Real
+                # gaps expire tracks when the next captured frame arrives; shutdown
+                # and terminal failures still finalize everything in the finally block.
                 if time.monotonic() < retry_at:
-                    tracker.expire(utc_now())
                     db.commit()
                     identifier.run_safely()
                     shutdown.wait(.2)
@@ -205,7 +268,6 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
                     if segment:
                         pending = executor.submit(detector, segment, settings, session_id)
                     else:
-                        tracker.expire(utc_now())
                         db.commit()
                         identifier.run_safely()
                 except LiveSourceError as exc:
@@ -242,6 +304,8 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
                     session.stopped_at = utc_now()
                     db.commit()
                     identifier.finish()
+                    # After identification, so a named species reaches the library row.
+                    finish_recording(db, session, settings, recorder)
             finally:
                 identifier.close()
                 # Tracks left unrendered by a crash must not strand spool frames.

@@ -63,8 +63,13 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--hairline);
-  /* The tone is a rule on the left edge, not a wash across the row. */
-  box-shadow: inset 3px 0 0 var(--status-uploaded);
+  /*
+   * The tone is a rule on the left edge and the faintest possible tint behind
+   * it — enough that broken and merely-waiting are told apart at a glance from
+   * across the room, nowhere near enough to be a coloured card. The pill in
+   * the row says the same thing in words.
+   */
+  box-shadow: inset 3px 0 0 var(--status-uploaded-edge);
   color: inherit;
   text-decoration: none;
   transition: background-color var(--motion-fast) var(--ease-out);
@@ -75,15 +80,28 @@
 }
 
 .attentionRow[data-tone='failed'] {
-  box-shadow: inset 3px 0 0 var(--status-failed);
+  box-shadow: inset 3px 0 0 var(--status-failed-edge);
+  background: var(--status-failed-bg);
 }
 
 .attentionRow[data-tone='flagged'] {
-  box-shadow: inset 3px 0 0 var(--status-flagged);
+  box-shadow: inset 3px 0 0 var(--status-flagged-edge);
+  background: var(--status-flagged-bg);
 }
 
 .attentionRow:hover {
   background: var(--surface-raised);
+}
+
+/* Hover lifts the row without losing which kind of row it is. */
+.attentionRow[data-tone='failed']:hover {
+  background: var(--surface-raised);
+  box-shadow: inset 3px 0 0 var(--status-failed-edge);
+}
+
+.attentionRow[data-tone='flagged']:hover {
+  background: var(--surface-raised);
+  box-shadow: inset 3px 0 0 var(--status-flagged-edge);
 }
 
 .attentionText {
@@ -276,20 +294,21 @@
 }
 
 /*
- * Water, kelp, sand: the three parts run down the marine sequence rather than
- * borrowing status colours, because "not reviewed yet" is a position in the
- * work, not an alarm.
+ * These three parts are statuses, not an arbitrary series, so they take the
+ * status hues: finished work is green, work in hand is the neutral, and the
+ * part still waiting on a person is amber — the same amber that marks a row
+ * awaiting review in the library, so the bar and the list agree.
  */
 .completionSegment[data-part='complete'] {
-  background: var(--chart-1);
+  background: var(--status-completed-edge);
 }
 
 .completionSegment[data-part='in-progress'] {
-  background: var(--chart-2);
+  background: var(--stone);
 }
 
 .completionSegment[data-part='awaiting'] {
-  background: var(--chart-5);
+  background: var(--status-flagged-edge);
 }
 
 @keyframes grow-segment {
@@ -348,15 +367,15 @@
 }
 
 .completionSwatch[data-part='complete'] {
-  background: var(--chart-1);
+  background: var(--status-completed-edge);
 }
 
 .completionSwatch[data-part='in-progress'] {
-  background: var(--chart-2);
+  background: var(--stone);
 }
 
 .completionSwatch[data-part='awaiting'] {
-  background: var(--chart-5);
+  background: var(--status-flagged-edge);
 }
 
 .completionKeyValue {

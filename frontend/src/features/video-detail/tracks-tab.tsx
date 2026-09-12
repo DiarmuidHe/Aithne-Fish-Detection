@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 
 import type { TrackSummary } from '@/api/types';
-import { fetchTrackSummaries } from '@/api/videos';
+import { fetchTrackSummaries, fetchTrackThumbnails } from '@/api/videos';
 import { Button } from '@/components/base/button';
 import { Check, NumberInput, RangeSlider } from '@/components/base/controls';
 import {
@@ -26,6 +26,10 @@ import { MoreIcon } from '@/icons';
 import { formatCount, formatSeconds, plural } from '@/lib/format';
 import { REVIEW_LABELS, REVIEW_VALUES } from '@/features/library/filter-state';
 
+import { IdentificationBadge, IdentifyFishButton } from '@/features/species/identify-fish';
+import { SpeciesLabel } from '@/features/species/species-reference';
+import { AssignSpeciesButton } from '@/features/species/species-selector';
+
 import { ReviewToggle, useReviewApplier } from './review-controls';
 import { TrackInspector } from './track-inspector';
 import styles from './detail.module.css';
@@ -46,6 +50,9 @@ const COLUMNS: {
   numeric?: boolean;
   optional?: boolean;
 }[] = [
+  // The fish itself, ahead of everything said about it. A row of figures cannot
+  // tell an operator what they are looking at; forty pixels of the animal can.
+  { key: 'preview', label: 'Fish', optional: true },
   { key: 'track', label: 'Track', sort: 'first_frame' },
   { key: 'result', label: 'VIAME / Result' },
   { key: 'review', label: 'Review decision', sort: 'review_state' },
@@ -55,6 +62,8 @@ const COLUMNS: {
   { key: 'confidence', label: 'Max confidence', sort: 'max_confidence', numeric: true },
   { key: 'mean', label: 'Mean confidence', sort: 'mean_confidence', numeric: true, optional: true },
   { key: 'species', label: 'Species', sort: 'species' },
+  // The classifier's answer sits beside the detector's, never in place of it.
+  { key: 'fishial', label: 'Fishial ID', optional: true },
 ];
 
 export function TracksTab({ videoId, fps }: { videoId: string; fps: number | null }) {
@@ -110,7 +119,26 @@ export function TracksTab({ videoId, fps }: { videoId: string; fps: number | nul
     queryKey: ['track-summaries', videoId, queryParams],
     queryFn: () => fetchTrackSummaries(videoId, queryParams),
     placeholderData: (previous) => previous,
+    // A requested identification finishes in a background task, so the table has
+    // to look again while any of its rows is waiting on one.
+    refetchInterval: (query) =>
+      query.state.data?.some((row) => row.fishial_state === 'submitted') ? 3_000 : false,
   });
+
+  // One request per video, not per row: the server reads the source in a single
+  // pass, so asking for all of them costs barely more than asking for one. A
+  // failure here leaves blank cells and never blocks the table.
+  const thumbnails = useQuery({
+    queryKey: ['track-thumbnails', videoId],
+    queryFn: () => fetchTrackThumbnails(videoId),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const thumbnailUrls = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of thumbnails.data ?? []) map.set(row.track_id, row.url);
+    return map;
+  }, [thumbnails.data]);
 
   const rows = tracks.data ?? [];
   const applier = useReviewApplier([
@@ -335,6 +363,8 @@ export function TracksTab({ videoId, fps }: { videoId: string; fps: number | nul
                     track={track}
                     columns={visibleColumns}
                     fps={fps}
+                    thumbnail={thumbnailUrls.get(track.id)}
+                    pendingThumbnail={thumbnails.isLoading}
                     onInspect={() => setParam((next) => next.set('track', track.id))}
                     onReview={(next) => applier.applyOne(track, next)}
                   />
@@ -359,16 +389,35 @@ function TrackRow({
   track,
   columns,
   fps,
+  thumbnail,
+  pendingThumbnail,
   onInspect,
   onReview,
 }: {
   track: TrackSummary;
   columns: typeof COLUMNS;
   fps: number | null;
+  thumbnail?: string;
+  pendingThumbnail?: boolean;
   onInspect: () => void;
   onReview: (next: TrackSummary['review_state']) => void;
 }) {
+  const name = track.fishial_species ?? track.species ?? 'this fish';
   const cells: Record<string, React.ReactNode> = {
+    preview: thumbnail ? (
+      // Opens the same inspector as the track link: the picture is the natural
+      // thing to click when you want a closer look.
+      <button
+        type="button"
+        className={styles.previewButton}
+        onClick={onInspect}
+        aria-label={`Inspect ${name}, track ${track.viame_track_id}`}
+      >
+        <img src={thumbnail} alt={`Cropped frame of ${name}`} loading="lazy" decoding="async" />
+      </button>
+    ) : (
+      <span className={styles.previewEmpty} data-pending={pendingThumbnail || undefined} />
+    ),
     track: (
       <button type="button" className={styles.trackLink} onClick={onInspect}>
         #{track.viame_track_id}
@@ -408,7 +457,38 @@ function TrackRow({
       />
     ),
     mean: `${(track.mean_confidence * 100).toFixed(1)}%`,
-    species: track.species ?? 'Unclassified',
+    species: <SpeciesLabel value={track.species} />,
+    fishial: (
+      <span className={styles.fishialCell}>
+        <IdentificationBadge
+          identification={{
+            state: track.fishial_state,
+            species: track.fishial_species,
+            confidence: track.fishial_species_confidence,
+          }}
+          manualSpecies={track.manual_species}
+        />
+        <IdentifyFishButton
+          kind="track"
+          trackId={track.id}
+          state={track.fishial_state}
+          variant="quiet"
+          label="Identify"
+        />
+        <AssignSpeciesButton
+          kind="track"
+          trackId={track.id}
+          current={track.manual_species}
+          identification={{
+            state: track.fishial_state,
+            species: track.fishial_species,
+            confidence: track.fishial_species_confidence,
+          }}
+          variant="quiet"
+          label={track.manual_species ? 'Change name' : 'Name it'}
+        />
+      </span>
+    ),
   };
 
   return (

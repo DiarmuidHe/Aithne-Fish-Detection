@@ -48,6 +48,7 @@ def get_system_status(
                 "message": "Worker status is unavailable until the database recovers",
             },
             queue={"queued": 0, "processing": 0, "failed": 0},
+            species_identification=_species_identification(settings),
         )
 
     now = datetime.now(UTC)
@@ -103,4 +104,13 @@ def get_system_status(
             "processing": queue_counts.get(JobStatus.PROCESSING.value, 0),
             "failed": queue_counts.get(JobStatus.FAILED.value, 0),
         },
+        species_identification=_species_identification(settings),
     )
+
+
+def _species_identification(settings: Settings) -> dict:
+    return {
+        "available": settings.fishial_enabled,
+        "max_frames": settings.fishial_request_max_frames,
+        "default_frames": settings.fishial_request_default_frames,
+    }

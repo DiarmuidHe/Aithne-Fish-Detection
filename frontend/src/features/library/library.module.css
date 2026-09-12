@@ -132,11 +132,12 @@
 }
 
 /* "updating" is a word with a pulse, not a spinner competing with the list. */
+/* Background refresh in progress: activity, not something to press. */
 .updating {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: var(--accent);
+  color: var(--ink-muted);
 }
 
 .updating::before {
@@ -217,28 +218,46 @@
   transition: background-color var(--motion-fast) var(--ease-out);
 }
 
+/*
+ * The edge answers "how did this one go", in the status hues at full strength
+ * — a 3px rule is not text, so it does not need the darkened text values.
+ */
 .rowWrap[data-status='completed']::before {
-  background: var(--status-completed);
+  background: var(--status-completed-edge);
 }
 
 .rowWrap[data-status='failed']::before {
-  background: var(--status-failed);
+  background: var(--status-failed-edge);
 }
 
-.rowWrap[data-status='processing']::before,
+.rowWrap[data-status='flagged']::before,
+.rowWrap[data-status='awaiting']::before {
+  background: var(--status-flagged-edge);
+}
+
+.rowWrap[data-status='processing']::before {
+  background: var(--status-processing-edge);
+}
+
+/* Queued is waiting, not running, so its edge stays neutral like its pill. */
 .rowWrap[data-status='queued']::before {
-  background: var(--status-processing);
+  background: var(--status-queued-edge);
 }
 
 .rowWrap:hover {
   background: var(--surface-hover);
 }
 
+/*
+ * Selection answers a different question — "which ones am I acting on" — so it
+ * gets its own hue rather than a deeper green. Ticked rows take the blue wash;
+ * the open record takes the wash and the edge, which outranks the status edge
+ * because the status is still spelled out in the row's own pill.
+ */
 .rowWrap[data-selected] {
   background: var(--accent-quiet);
 }
 
-/* The open record is marked by a full-height accent edge, not a wash. */
 .rowWrap[data-current] {
   background: var(--accent-quiet);
 }
@@ -246,6 +265,11 @@
 .rowWrap[data-current]::before {
   background: var(--accent);
   width: 3px;
+}
+
+.rowWrap[data-selected]:hover,
+.rowWrap[data-current]:hover {
+  background: var(--accent-quiet-hover);
 }
 
 .rowCheck {
@@ -278,6 +302,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A recorded live session sits in the library beside uploads; the badge says
+   where the footage came from without competing with the processing status. */
+.rowBadge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
 }
 
 .rowMeta {

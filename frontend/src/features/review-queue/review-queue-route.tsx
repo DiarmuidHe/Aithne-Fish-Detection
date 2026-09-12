@@ -17,6 +17,7 @@ import {
 import { Modal } from '@/components/base/popups';
 import { AppBarSlot } from '@/components/layout/shell';
 import { KeyboardIcon } from '@/icons';
+import { SpeciesLabel } from '@/features/species/species-reference';
 import { useReviewApplier } from '@/features/video-detail/review-controls';
 import { formatDateTime, formatPercent, formatSeconds, plural } from '@/lib/format';
 
@@ -313,7 +314,7 @@ export function ReviewQueueRoute() {
                     </span>
                     <span className={styles.queueItemMeta}>
                       <span className={styles.queueSpecies}>
-                        {track.species ?? 'Unclassified'}
+                        <SpeciesLabel value={track.species} />
                       </span>
                       <span className={styles.queueSpan}>{spanOf(track)}</span>
                     </span>
@@ -428,7 +429,7 @@ export function ReviewQueueRoute() {
               </p>
 
               <dl className={styles.facts}>
-                <Fact term="Species" value={currentTrack.species ?? 'Unclassified'} />
+                <Fact term="Species" value={<SpeciesLabel value={currentTrack.species} />} />
                 <Fact term="Confidence" value={formatPercent(currentTrack.max_confidence)} />
                 <Fact
                   term="Mean confidence"

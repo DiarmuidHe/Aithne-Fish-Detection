@@ -319,7 +319,8 @@ def test_species_api_validation_and_aggregation(client, db_session_factory, test
     test_settings.live_monitor_enabled = True
     test_settings.viame_mock = False
     assert client.get("/live/sources").json()["fishial"] == {
-        "enabled": False, "max_fish_per_session": 20, "default_frames_per_fish": 5}
+        "enabled": False, "max_fish_per_session": 20, "default_frames_per_fish": 5,
+        "request_max_frames": 12, "request_default_frames": 5}
     assert client.post("/live/start", json={"species_id_fish_target": 1}).status_code == 409
     test_settings.fishial_enabled = True
     for body in ({"species_id_fish_target": -1}, {"species_id_fish_target": 21},

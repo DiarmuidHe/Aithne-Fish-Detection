@@ -6,6 +6,8 @@ import { AnchorButton } from '@/components/base/button';
 import { EmptyState, PanelError, Skeleton } from '@/components/base/feedback';
 import { MediaGrid, MediaTile } from '@/components/base/media-grid';
 import { formatPercent, formatSeconds, plural } from '@/lib/format';
+import { IdentificationBadge, IdentifyFishButton } from '@/features/species/identify-fish';
+import { AssignSpeciesButton } from '@/features/species/species-selector';
 
 import styles from './detail.module.css';
 
@@ -19,6 +21,10 @@ export function ClipsTab({ videoId }: { videoId: string }) {
   const clips = useQuery({
     queryKey: ['fish-clips', videoId],
     queryFn: () => fetchFishClips(videoId),
+    // A requested identification lands in a background task, so keep looking
+    // while any fish on this board is waiting on one.
+    refetchInterval: (query) =>
+      query.state.data?.some((clip) => clip.fishial_state === 'submitted') ? 3_000 : false,
   });
 
   if (clips.isLoading) {
@@ -75,18 +81,59 @@ export function ClipsTab({ videoId }: { videoId: string }) {
                 aria-label={`Clip following fish ${clip.viame_track_id}`}
               />
             }
-            title={clip.species ?? `Fish ${clip.viame_track_id}`}
+            title={
+              clip.manual_species ??
+              clip.fishial_species ??
+              clip.species ??
+              `Fish ${clip.viame_track_id}`
+            }
             subtitle={`#${clip.viame_track_id}`}
+            flagTone={
+              clip.manual_species || clip.fishial_state === 'identified' ? 'named' : 'neutral'
+            }
+            flag={
+              clip.fishial_state === 'none' && !clip.manual_species ? undefined : (
+                <IdentificationBadge
+                  identification={{
+                    state: clip.fishial_state,
+                    species: clip.fishial_species,
+                    confidence: clip.fishial_species_confidence,
+                  }}
+                  manualSpecies={clip.manual_species}
+                />
+              )
+            }
             meta={`${formatSeconds(clip.start_seconds)}–${formatSeconds(clip.end_seconds)} · ${clip.duration_seconds.toFixed(1)} s · ${clip.detection_count} observations · ${formatPercent(clip.max_confidence)}`}
             actions={
-              <AnchorButton
-                variant="quiet"
-                size="small"
-                href={trackClipUrl(clip.track_id, clip.generated_at, true)}
-                download
-              >
-                Save
-              </AnchorButton>
+              <>
+                <IdentifyFishButton
+                  kind="track"
+                  trackId={clip.track_id}
+                  state={clip.fishial_state}
+                  variant="quiet"
+                  label="Identify"
+                />
+                <AssignSpeciesButton
+                  kind="track"
+                  trackId={clip.track_id}
+                  current={clip.manual_species}
+                  identification={{
+                    state: clip.fishial_state,
+                    species: clip.fishial_species,
+                    confidence: clip.fishial_species_confidence,
+                  }}
+                  variant="quiet"
+                  label={clip.manual_species ? 'Change name' : 'Name it'}
+                />
+                <AnchorButton
+                  variant="quiet"
+                  size="small"
+                  href={trackClipUrl(clip.track_id, clip.generated_at, true)}
+                  download
+                >
+                  Save
+                </AnchorButton>
+              </>
             }
           />
         ))}

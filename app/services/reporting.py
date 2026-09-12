@@ -121,6 +121,14 @@ def track_summary_row(track: FishTrack, video: Video, jobs: dict,
         "max_confidence": track.max_confidence,
         "species": track.species,
         "species_confidence": track.species_confidence,
+        # Enough for the table to show what Fishial said and to offer the action;
+        # the full audit stays behind /tracks/{id}/identification.
+        "fishial_state": track.fishial_state,
+        "fishial_species": track.fishial_species,
+        "fishial_species_confidence": track.fishial_species_confidence,
+        # And what a person decided, which outranks both when one name is shown.
+        "manual_species": track.manual_species,
+        "manual_species_at": track.manual_species_at,
         "accepted": is_accepted_track(track, run_threshold),
         "run_threshold": run_threshold,
         "review_categories": sorted(review_categories(track, run_threshold, band)),

@@ -29,6 +29,8 @@ class VideoRead(BaseModel):
     pipeline_name: str
     confidence_threshold: float
     annotated_at: datetime | None
+    is_live_recording: bool
+    source_session_id: uuid.UUID | None
     latest_job: JobRead | None
 
     model_config = ConfigDict(from_attributes=True)

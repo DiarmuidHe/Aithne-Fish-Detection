@@ -14,7 +14,9 @@ data/uploads/*
 data/jobs/*
 data/outputs/*
 data/product-validation/
+data/live-recording-validation/
 data/models/
+data/species-reference/
 !data/uploads/.gitkeep
 !data/jobs/.gitkeep
 !data/outputs/.gitkeep

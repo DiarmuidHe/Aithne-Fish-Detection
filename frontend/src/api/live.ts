@@ -1,4 +1,4 @@
-import { postJson, request, toQuery } from './client';
+import { patchJson, postJson, request, toQuery } from './client';
 import type {
   LiveActivity,
   LiveLatest,
@@ -50,6 +50,19 @@ export function fetchLiveClips(sessionId: string): Promise<LiveTrack[]> {
 
 export function fetchLiveSpecies(sessionId: string): Promise<LiveSpecies> {
   return request<LiveSpecies>(`/live/${encodeURIComponent(sessionId)}/species`);
+}
+
+/** Ask Fishial to name one fish an operator picked out of the live view. */
+export function identifyLiveTrack(trackId: string, frames: number): Promise<LiveTrack> {
+  return postJson<LiveTrack>(`/live/tracks/${encodeURIComponent(trackId)}/identify`, { frames });
+}
+
+/** Name a fish in the live view yourself. Same field and rules as a library track. */
+export function assignLiveTrackSpecies(
+  trackId: string,
+  species: string | null,
+): Promise<LiveTrack> {
+  return patchJson<LiveTrack>(`/live/tracks/${encodeURIComponent(trackId)}/species`, { species });
 }
 
 export function liveSnapshotUrl(streamUrl: string, version: string | null): string {

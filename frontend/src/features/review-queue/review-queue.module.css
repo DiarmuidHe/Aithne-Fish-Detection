@@ -186,9 +186,15 @@
   background: var(--status-failed-bg);
 }
 
+/*
+ * Borderline is the ordinary reason a track is here, so it stays neutral: it
+ * is not finished (green would say it was) and it is not an exception (amber
+ * would say it was, and would then be on nearly every row). The two reasons
+ * that are exceptions keep the warm hues to themselves.
+ */
 .queueReason[data-reason='borderline'] {
-  color: var(--status-processing);
-  background: var(--status-processing-bg);
+  color: var(--status-uploaded);
+  background: var(--status-uploaded-bg);
 }
 
 .queueVideos {
@@ -240,6 +246,20 @@
   min-height: 0;
   /* Footage sits on the darkest ground in the app, whichever theme is on. */
   background: var(--chrome);
+  color: var(--chrome-ink);
+  /*
+   * The slab remaps the semantic inks the way the live console does, so
+   * anything written on it — including the shared .note and .label helpers,
+   * which a module rule cannot reach — lands on the shell's own palette
+   * instead of the light theme's.
+   */
+  --ink: var(--chrome-ink);
+  --ink-muted: var(--chrome-ink-muted);
+  --ink-faint: var(--chrome-ink-faint);
+  --hairline: var(--chrome-hairline);
+  --hairline-strong: var(--chrome-hairline-strong);
+  --accent: var(--chrome-accent);
+  --focus-ring: var(--chrome-accent);
 }
 
 .stage {
@@ -256,7 +276,7 @@
   max-width: 100%;
   max-height: 100%;
   width: auto;
-  background: #000;
+  background: var(--media-well);
   border-radius: var(--radius-panel);
   /* No frame, no glow: the footage is the content. */
   box-shadow: 0 2px 12px rgb(0 0 0 / 35%);
@@ -380,20 +400,20 @@
 
 .reason {
   padding: var(--space-3);
-  border-left: 3px solid var(--status-processing);
+  border-left: 3px solid var(--status-uploaded-edge);
   border-radius: 0 var(--radius-control) var(--radius-control) 0;
-  background: var(--status-processing-bg);
+  background: var(--status-uploaded-bg);
   font-size: var(--text-xs);
   line-height: var(--leading-xs);
 }
 
 .reason[data-reason='flagged'] {
-  border-left-color: var(--status-flagged);
+  border-left-color: var(--status-flagged-edge);
   background: var(--status-flagged-bg);
 }
 
 .reason[data-reason='disputed'] {
-  border-left-color: var(--status-failed);
+  border-left-color: var(--status-failed-edge);
   background: var(--status-failed-bg);
 }
 

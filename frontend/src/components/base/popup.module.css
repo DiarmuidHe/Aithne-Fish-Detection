@@ -92,7 +92,7 @@
   position: fixed;
   inset: 0;
   /* Tinted to the spine rather than neutral black, so dialogs sit in the app. */
-  background: rgb(10 26 31 / 48%);
+  background: rgb(22 38 25 / 48%);
   transition: opacity var(--motion) var(--ease-out);
   z-index: 40;
 }

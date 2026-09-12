@@ -117,6 +117,11 @@ function VideoRow({
             <Hint content={video.original_filename}>
               <span className={styles.rowName}>{video.original_filename}</span>
             </Hint>
+            {video.is_live_recording ? (
+              <Hint content="Recorded while this camera was monitored live">
+                <span className={styles.rowBadge}>Live</span>
+              </Hint>
+            ) : null}
             <StatusPill status={video.processing_status} />
           </span>
           <span className={styles.rowMeta}>

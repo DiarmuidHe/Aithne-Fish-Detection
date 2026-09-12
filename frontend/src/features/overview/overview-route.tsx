@@ -120,7 +120,7 @@ export function OverviewRoute() {
             label="In flight"
             value={formatCount(inFlight)}
             meta={inFlight > 0 ? 'Queued or processing' : 'Nothing queued'}
-            tone={inFlight > 0 ? 'accent' : undefined}
+            tone={inFlight > 0 ? 'active' : undefined}
             to="/settings"
           />
         </MetricRow>

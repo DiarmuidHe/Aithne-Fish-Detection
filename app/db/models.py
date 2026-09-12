@@ -70,6 +70,17 @@ class Video(Base):
     confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False)
     annotated_video_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     annotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A completed live session is registered here as an ordinary video so the
+    # existing annotation, review and export paths work on camera footage unchanged.
+    is_live_recording: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    source_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(),
+        ForeignKey("live_monitor_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     jobs: Mapped[list["ProcessingJob"]] = relationship(
         back_populates="video", cascade="all, delete-orphan"
@@ -165,6 +176,34 @@ class FishTrack(Base):
     max_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     species: Mapped[str | None] = mapped_column(String(256), nullable=True)
     species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Operator-requested Fishial identification, kept apart from the detector's own
+    # ``species`` so a classifier's answer never overwrites what VIAME reported.
+    # "none" means nobody has asked; the remaining states match a live track's.
+    fishial_state: Mapped[str] = mapped_column(
+        String(16), default="none", server_default="none", nullable=False
+    )
+    fishial_species: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    fishial_species_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fishial_frames_used: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    fishial_votes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fishial_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fishial_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fishial_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # What a person decided this fish is, kept apart from both machines for the
+    # same reason they are kept apart from each other: three different sources of
+    # a name, and a reviewer needs to know which one they are reading. A human
+    # answer outranks both when the dashboard has to show one name, and clearing
+    # it restores the machine's without having destroyed anything.
+    manual_species: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    manual_species_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     video: Mapped[Video] = relationship(back_populates="tracks")
     detections: Mapped[list["FishDetection"]] = relationship(
@@ -173,10 +212,22 @@ class FishTrack(Base):
         order_by="FishDetection.frame_number",
     )
 
+    @property
+    def fishial_votes(self) -> dict[str, Any]:
+        try:
+            value = json.loads(self.fishial_votes_json)
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
     __table_args__ = (
         CheckConstraint(
             "review_state IN ('unreviewed', 'reviewed', 'accepted', 'rejected', 'needs-review')",
             name="ck_fish_tracks_review_state",
+        ),
+        CheckConstraint(
+            "fishial_state IN ('none','submitted','identified','review_required','error')",
+            name="ck_fish_tracks_fishial_state",
         ),
         UniqueConstraint("video_id", "viame_track_id", name="uq_fish_track_video_viame_id"),
         Index("ix_fish_tracks_video_confidence", "video_id", "max_confidence"),
@@ -232,6 +283,9 @@ class LiveMonitorSession(Base):
     species_id_frames_per_fish: Mapped[int] = mapped_column(Integer, default=5, server_default="5", nullable=False)
     species_id_fish_enrolled: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     species_id_api_calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Calls an operator asked for on one chosen fish. Counted apart from the
+    # automatic budget so a manual request can never starve the session's own.
+    species_id_manual_api_calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     species_id_candidate_pool_size: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     species_id_calls_saved: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Frozen at session start so a later edit to the camera registry cannot
@@ -272,8 +326,12 @@ class LiveFishTrack(Base):
     fishial_species_confidence: Mapped[float | None] = mapped_column(Float)
     fishial_frames_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     fishial_votes_json: Mapped[str | None] = mapped_column(Text)
+    fishial_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fishial_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fishial_quality_score: Mapped[float | None] = mapped_column(Float)
+    # The same operator-assigned name a library track carries; see FishTrack.
+    manual_species: Mapped[str | None] = mapped_column(String(256))
+    manual_species_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         Index("ix_live_tracks_session_status", "session_id", "status"),
         CheckConstraint(
