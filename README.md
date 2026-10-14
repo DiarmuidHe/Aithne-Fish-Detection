@@ -9,6 +9,9 @@ The system treats VIAME as an isolated worker. The API stores uploaded or regist
 queues database-backed processing jobs, and a separate worker runs VIAME or mock mode, parses VIAME
 CSV output, stores tracks and detections in PostgreSQL, and exposes JSON results through FastAPI.
 
+For the local, human-reviewed VIAME-to-custom-model workflow, see [Custom fish model](docs/custom-fish-model.md).
+For the optional local CVAT upload and review integration, see [CVAT development review](docs/cvat-development.md).
+
 ```text
 underwater video
 -> VIAME fish detector/tracker
@@ -672,20 +675,77 @@ a working VIAME installation, run `alembic upgrade head`, and run
 `python -m app.workers.live_worker` alongside the API. Set `VIAME_MOCK=false` and
 `LIVE_MONITOR_ENABLED=true` in both processes. The Docker API applies migrations to `head` on startup.
 
-Four cameras ship in the registry, and the dashboard dropdown selects which one the pipeline
+Seventeen cameras ship in the registry, and the dashboard dropdown selects which one the pipeline
 analyses:
 
-| Key | Label | Source |
-| --- | --- | --- |
-| `coral-city` | Coral City Camera | Miami, Florida - page scrape plus yt-dlp |
-| `smartbay-cam1` | SmartBay Cam 1 | Galway Bay, Ireland - direct HLS |
-| `smartbay-cam2` | SmartBay Cam 2 | Galway Bay, Ireland - direct HLS |
-| `smartbay-cam3` | SmartBay Cam 3 (ANERIS EMUAS) | Galway Bay, Ireland - direct HLS |
+| Key | Label | Source | Schedule |
+| --- | --- | --- | --- |
+| `coral-city` | Coral City Camera | Miami, Florida - page scrape plus yt-dlp | continuous |
+| `smartbay-cam1` | SmartBay Cam 1 | Galway Bay, Ireland - direct HLS | continuous |
+| `smartbay-cam2` | SmartBay Cam 2 | Galway Bay, Ireland - direct HLS | continuous |
+| `smartbay-cam3` | SmartBay Cam 3 (ANERIS EMUAS) | Galway Bay, Ireland - direct HLS | continuous |
+| `onc-folger-pinnacle` | ONC Folger Pinnacle | Barkley Sound, BC - direct HLS | 5 min hourly |
+| `onc-china-creek` | ONC China Creek | Alberni Inlet, BC - direct HLS | 5 min hourly |
+| `onc-campbell-river` | ONC Campbell River | Campbell River, BC - direct HLS | 5 min hourly |
+| `onc-digby-island` | ONC Digby Island | Prince Rupert, BC - direct HLS | 5 min hourly |
+| `onc-kitamaat-village` | ONC Kitamaat Village | Douglas Channel, BC - direct HLS | 5 min hourly |
+| `onc-hartley-bay` | ONC Hartley Bay | Hartley Bay, BC - direct HLS | 5 min hourly |
+| `onc-holyrood-bay` | ONC Holyrood Bay | Conception Bay, NL - direct HLS | 5 min hourly |
+| `onc-barkley-axis` | ONC Barkley Canyon Axis | Barkley Canyon, BC - direct HLS | 5 min hourly |
+| `onc-barkley-upper-slope` | ONC Barkley Canyon Upper Slope | Barkley Canyon, BC - direct HLS | 5 min, start of UTC hour |
+| `onc-cascadia-basin` | ONC Cascadia Basin | Cascadia Basin, BC - direct HLS | 5 min hourly |
+| `onc-clayoquot-bullseye` | ONC Clayoquot Bullseye | Clayoquot Slope, BC - direct HLS | every 4 h from 00:00 UTC |
+| `onc-endeavour-mothra` | ONC Endeavour Mothra | Endeavour Ridge - direct HLS | 4 min every 4 h |
+| `onc-tempo-mini` | ONC Tempo Mini - Main Endeavour | Endeavour Ridge - direct HLS | 4 min every 4 h |
+
+> **A playlist URL is not something to open in a browser.** Chrome has no native HLS support, so
+> pasting one of these `.m3u8` URLs into it yields a black `<video>` frozen at 0:00 even when the
+> camera is broadcasting normally. Watch a camera on its own page instead - the registry carries one
+> per camera as `info_url`, and the dashboard links to that and never to the playlist. Do not
+> "fix" a camera that was only ever unplayable in your browser.
 
 The SmartBay streams come from the Marine Institute SmartBay Observatory in Galway Bay and are
-delivered via HEAnet; the observatory publishes them at <https://smartbay.marine.ie/>. A camera can
-be reachable while publishing nothing, which is reported as "online but not currently broadcasting"
-rather than an FFmpeg failure.
+delivered via HEAnet; the observatory publishes them at <https://smartbay.marine.ie/>, under
+**CC BY 4.0**. A camera can be reachable while publishing nothing, which is reported as "online but
+not currently broadcasting" rather than an FFmpeg failure.
+
+The thirteen Ocean Networks Canada cameras are seafloor and coastal observatory cameras, watchable at
+<https://www.oceannetworks.ca/multimedia/live-cameras/>. Their video is **CC BY-NC-SA 3.0** -
+attribution, share-alike, and **non-commercial**, which is *not* the CC BY 4.0 that covers ONC's data
+portal and is more restrictive than the SmartBay cameras beside them. **They are unsuitable for a
+commercial demo**; the dashboard shows "Ocean Networks Canada (CC BY-NC-SA 3.0)" on each row so that
+is visible where the camera is chosen. None of them sets a `region`: there is no Northeast Pacific
+species list, and the filter is opt-in, so unset accepts every name rather than silently discarding
+identifications.
+
+**Most of these cameras are duty-cycled**, typically five minutes at the top of each hour. Between
+windows the playlist answers 404, which is the schedule and not a fault, so an `idle` badge on ten of
+the thirteen for most of any given hour is the expected state. Starting a session on an idle camera
+fails with "online but not currently broadcasting"; wait for its window, or pick a camera the
+dashboard marks `live`.
+
+### Which cameras are broadcasting
+
+`GET /live/sources/health` reports one state per camera, and the dashboard shows it in the camera
+dropdown and in a collapsible camera list, refreshed every 30 seconds:
+
+| State | Meaning |
+| --- | --- |
+| `live` | The playlist advertises a stream. Starting a session here produces frames. |
+| `idle` | Reachable and publishing nothing - off its duty cycle, or a 404 from the media server. |
+| `offline` | Timed out, refused, or a 5xx. |
+| `unknown` | A page source (Coral City, or any non-`.m3u8` URL). Not probed. |
+
+The probe is deliberately narrow. It fetches only URLs already in the registry - never one supplied
+by a caller, the same invariant as the resolver - and reuses the resolver's own playlist check rather
+than parsing HLS a second time. It never invokes yt-dlp or any other subprocess, which is why a page
+source is reported `unknown` instead of resolved: resolution takes seconds, and doing it per camera
+would fork seventeen processes on every dashboard poll. One short-timeout GET per camera runs
+concurrently, so a camera that is down costs only its own timeout, and the whole result is cached, so
+ONC sees one request per camera per cache window however many browser tabs are open. Nothing about
+the endpoint touches the database or the live worker: it answers with the worker stopped, creates no
+session rows, and never reports a resolved or redirected URL. Set `LIVE_HEALTH_ENABLED=false` and it
+answers `enabled: false` with an empty map, and the dashboard simply shows no badges.
 
 **Only one camera runs at a time.** The live worker runs one session to completion, and there is one
 GPU, so the dropdown chooses the camera for the *next* session. Starting a second camera while one is
@@ -693,7 +753,8 @@ running returns 409 naming the running camera; switching means stopping first. T
 disabled while a session is open, and a running session pins the selector for every browser tab.
 
 The registry is administrator configuration. `LIVE_SOURCE_REGISTRY` overrides it with a JSON array of
-`{key, label, url, location}` objects (unset, or `[]`, keeps the cameras that ship in code),
+`{key, label, url, location, region, info_url, attribution}` objects (only `key`, `label` and `url`
+are required; unset, or `[]`, keeps the cameras that ship in code),
 `LIVE_DEFAULT_SOURCE_KEY` (default `coral-city`) picks the preselected camera, and `CORAL_CITY_URL`
 still overrides the URL of the `coral-city` entry so existing `.env` files keep working. Keys must match `^[a-z0-9-]{1,64}$` and are unique; the settings
 load fails otherwise. The API accepts a camera **key** only and answers 404 for an unknown key -
@@ -708,9 +769,12 @@ Signed media URLs are never logged or returned by the API.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `LIVE_SOURCE_REGISTRY` | four cameras | JSON array of selectable cameras (`key`, `label`, `url`, `location`) |
+| `LIVE_SOURCE_REGISTRY` | seventeen cameras | JSON array of selectable cameras (`key`, `label`, `url`, `location`, `region`, `info_url`, `attribution`) |
 | `LIVE_DEFAULT_SOURCE_KEY` | `coral-city` | Camera preselected in the dashboard |
 | `CORAL_CITY_URL` | `https://www.coralcitycamera.com/` | Overrides the `coral-city` entry's URL |
+| `LIVE_HEALTH_ENABLED` | `true` | Report which cameras are broadcasting; `false` hides the badges |
+| `LIVE_HEALTH_TIMEOUT_SECONDS` | `2` | Per-camera probe timeout; a down camera costs only this |
+| `LIVE_HEALTH_CACHE_SECONDS` | `20` | How long one round of probe results is reused for every caller |
 | `LIVE_LOST_TRACK_SECONDS` | `10` | Finalize after this interval without an observation |
 | `LIVE_SEGMENT_SECONDS` | `2` | Continuous FFmpeg capture chunk duration |
 | `LIVE_FPS` | `4` | Capture and VIAME sampling rate: one frame every 0.25 seconds |
@@ -1239,6 +1303,7 @@ winners, multiple-fish responses, full-frame crops, and non-HTTPS provider URLs.
 reserved before sending (rather than incremented afterwards) to make the crash ceiling reliable.
 
 API: `GET /live/sources` (registry, defaults, and which camera is currently running),
+`GET /live/sources/health` (which cameras are broadcasting right now),
 `POST /live/start` with `{"source": "<key>"}`, `POST /live/{session_id}/stop`,
 `GET /live/latest?source=<key>` (omitted `source` uses the default key), and
 `GET /live/{session_id}/{status,activity,tracks,clips}`. Session payloads carry `source_key` and
@@ -1272,3 +1337,7 @@ an in-flight detector exits (bounded by its timeout).
 - Live RTSP ingestion
 - Custom model training
 - Mobile app
+
+# Optional external datasets and offline detector
+
+See [Brackish, BrackishMOT, Fishial, and OpenAqua guide](docs/external-fish-datasets.md) for sequence-safe imports, offline candidate inference, and separate CVAT suggestions.

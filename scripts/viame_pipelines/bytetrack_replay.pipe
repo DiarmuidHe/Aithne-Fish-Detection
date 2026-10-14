@@ -1,0 +1,76 @@
+# =============================================================================
+# Title: ByteTrack replay from saved detections (offline experiment)
+#
+# Description: Reads a saved viame_csv detection file by image file name and
+# runs the production tracker block, ToT averager and track writer from
+# app/viame_pipelines/tracker_fish_no_motion.pipe. The image list holds only the
+# analysed frames, so there is no downsampler. Images are not decoded: VIAME's
+# ByteTrack ignores pixels. tests/test_murky_water.py keeps the tracker block
+# identical to production. Never used by the application.
+# =============================================================================
+
+config _pipeline:_edge
+  :capacity                                    5
+
+config _scheduler
+  :type                                        pythread_per_process
+
+include common_no_load_input.pipe
+
+process detection_reader
+  :: detected_object_input
+  :file_name                                   detections.csv
+  :reader:type                                 viame_csv
+
+connect from input.file_name
+        to   detection_reader.image_file_name
+
+# =============================== CORE TRACKER ================================
+
+process tracker
+  :: track_objects
+  :track_objects:type                          bytetrack
+
+  block track_objects:bytetrack
+    :high_thresh                               0.45
+    :low_thresh                                0.10
+    :match_thresh                              0.98
+    :second_match_thresh                       0.98
+    :unconfirmed_match_thresh                  0.98
+    :track_buffer                              30
+    :new_track_thresh                          0.50
+    :std_weight_position                       0.26666666666666666
+    :std_weight_velocity                       0.17804493814764857
+  endblock
+
+connect from input.image
+        to   tracker.image
+connect from input.timestamp
+        to   tracker.timestamp
+connect from detection_reader.detected_object_set
+        to   tracker.detected_object_set
+
+# ================================ OUTPUT DATA ================================
+
+process track_tot_averager
+  :: refine_tracks
+  :refiner:type                                average_tot
+  :refiner:average_tot:tot_option              weighted_average
+
+process track_writer
+  :: write_object_track
+  :file_name                                   computed_tracks.csv
+  :writer:type                                 viame_csv
+  :writer:viame_csv:stream_identifier          input_list.txt
+  :writer:viame_csv:tot_option                 detection
+
+connect from tracker.object_track_set
+        to   track_tot_averager.object_track_set
+connect from track_tot_averager.object_track_set
+        to   track_writer.object_track_set
+connect from input.timestamp
+        to   track_writer.timestamp
+connect from input.file_name
+        to   track_writer.image_file_name
+
+# -- end of file --

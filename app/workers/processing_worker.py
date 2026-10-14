@@ -22,6 +22,7 @@ from app.db.models import (
     WorkerHeartbeat,
 )
 from app.services.fish_counter import accepted_tracks
+from app.services.cvat_sync import sync_cvat_video
 from app.services.processing_config import settings_for_processing_job
 from app.services.track_clip import remove_video_clips
 from app.services.viame_parser import parse_viame_csv
@@ -182,6 +183,15 @@ def process_job(
             len(accepted),
             len(parsed.skipped_rows),
         )
+        if settings.cvat_dev_mode:
+            # The processing result is committed. CVAT failures cannot turn a
+            # completed VIAME job into a failed job.
+            threading.Thread(
+                target=sync_cvat_video,
+                args=(video_id, settings, session_factory),
+                name=f"cvat-sync-{video_id}",
+                daemon=True,
+            ).start()
     except Exception as exc:
         logger.exception("processing job failed job_id=%s video_id=%s", job_id, video_id)
         with session_factory() as db:

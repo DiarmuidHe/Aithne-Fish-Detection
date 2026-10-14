@@ -96,6 +96,60 @@ class Video(Base):
         return max(self.jobs, key=lambda job: (job.created_at, str(job.id)))
 
 
+class CvatSync(Base):
+    """Development-only mirror of a video and its initial VIAME suggestions."""
+
+    __tablename__ = "cvat_syncs"
+
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("videos.id", ondelete="CASCADE"), primary_key=True
+    )
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imported_job_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    video: Mapped[Video] = relationship()
+
+
+class ReviewRegion(Base):
+    """A person's explicit certification of a bounded part of a CVAT video."""
+
+    __tablename__ = "review_regions"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    start_frame: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_frame: Mapped[int] = mapped_column(Integer, nullable=False)
+    boxes_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ids_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    species_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    annotation_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    review_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint("start_frame >= 0 AND end_frame >= start_frame", name="ck_review_region_frames"),
+        UniqueConstraint("video_id", "start_frame", "end_frame", name="uq_review_region_bounds"),
+    )
+
+
+class ReviewedSpecies(Base):
+    """Human species decision keyed to the corrected CVAT track identity."""
+
+    __tablename__ = "reviewed_species"
+
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("videos.id", ondelete="CASCADE"), primary_key=True
+    )
+    cvat_track_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    species: Mapped[str] = mapped_column(String(256), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
 

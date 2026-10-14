@@ -23,6 +23,7 @@ from app.db.models import (
 )
 from app.schemas.track import TrackSpeciesUpdate
 from app.services.live_monitor import aware, stored_media_path
+from app.services.live_source import probe_sources
 from app.services.species_quality import review_diagnostics
 from app.services.species_request import (
     IdentificationBusyError,
@@ -149,8 +150,32 @@ def sources(db: Session = Depends(get_db), settings: Settings = Depends(get_sett
                         "request_max_frames": settings.fishial_request_max_frames,
                         "request_default_frames": settings.fishial_request_default_frames},
             "sources": [{"key": source.key, "label": source.label, "location": source.location,
-                         "url": source.url, "active_session_id": active.get(source.key)}
+                         "url": source.url, "info_url": source.info_url,
+                         "attribution": source.attribution,
+                         "active_session_id": active.get(source.key)}
                         for source in settings.live_source_registry]}
+
+
+@router.get("/sources/health")
+def sources_health(settings: Settings = Depends(get_settings)):
+    """Which cameras are broadcasting right now.
+
+    Most of the registry is duty-cycled, so the alternative to this is starting a
+    session and watching it fail. It probes configured registry URLs only, never a
+    client-supplied one, and never through a subprocess; it creates no session rows
+    and reads no table, so it answers whether or not the live worker is running.
+    """
+
+    if not settings.live_health_enabled:
+        # A disabled probe degrades the UI to no badges. A 404 here would surface
+        # as a route error on a page whose camera list works perfectly well.
+        return {"enabled": False, "checked_at": utc_now(), "sources": {}}
+    health = probe_sources(settings.live_source_registry, settings)
+    return {"enabled": True,
+            "checked_at": min((entry.checked_at for entry in health.values()), default=utc_now()),
+            "sources": {key: {"state": entry.state, "detail": entry.detail,
+                              "checked_at": entry.checked_at}
+                        for key, entry in health.items()}}
 
 
 @router.get("/latest")

@@ -1,11 +1,14 @@
-"""Resolve the configured camera page and continuously record bounded short chunks."""
+"""Resolve the configured camera page, report which cameras are broadcasting, and
+continuously record bounded short chunks."""
 from __future__ import annotations
 
 import html
 import re
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -13,12 +16,18 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from app.config import Settings
+from app.config import LiveCameraSource, Settings
 from app.db.models import utc_now
 
 
 class LiveSourceError(RuntimeError):
     pass
+
+
+# Wowza's rtplive application answers 404 while nothing is published, which for a
+# duty-cycled camera is its schedule rather than a fault. Reading that as broken
+# would make ten of the thirteen ONC cameras look faulty for most of every hour.
+OFF_SCHEDULE_STATUSES = frozenset({404, 410})
 
 
 def check_playlist_body(body: str, label: str) -> None:
@@ -41,14 +50,121 @@ def check_playlist(url: str, client, label: str) -> None:
     """Fetch a playlist to check it before handing the URL to FFmpeg.
 
     A transport failure here is left to the worker's reconnect path rather than
-    being reported as an idle camera.
+    being reported as an idle camera. A media server that answers "no such
+    publication" is not a transport failure: for a duty-cycled camera it is the
+    same "publishing nothing" an empty playlist means, and FFmpeg would report it
+    seconds later as an opaque failure.
     """
     try:
         response = client.get(url)
+    except httpx.HTTPError:
+        return
+    if response.status_code in OFF_SCHEDULE_STATUSES:
+        raise LiveSourceError(
+            f"{label} is online but not currently broadcasting; its media server is "
+            "publishing no stream, so it is off its schedule."
+        )
+    try:
         response.raise_for_status()
     except httpx.HTTPError:
         return
     check_playlist_body(response.text, label)
+
+
+HLS_URL_PATTERN = re.compile(r"\.m3u8(?:\?|$)", re.I)
+
+
+@dataclass(frozen=True)
+class SourceHealth:
+    """Whether one configured camera is broadcasting right now.
+
+    ``state`` is one of ``live`` (a playlist advertising a stream), ``idle``
+    (reachable, publishing nothing — off its duty cycle), ``offline`` (not
+    reachable) or ``unknown`` (a page source, which is not probed).
+    """
+
+    key: str
+    state: str
+    detail: str | None
+    checked_at: datetime
+
+
+def probe_source(source: LiveCameraSource, settings: Settings, client) -> SourceHealth:
+    """Ask one camera's configured playlist whether it is publishing anything.
+
+    Only registry URLs are probed, never anything a client supplied, and never
+    through yt-dlp or any other subprocess: a page source costs seconds to resolve
+    and is reported ``unknown`` instead. The configured URL alone is touched, and a
+    redirect target is never recorded in the result.
+    """
+
+    def health(state: str, detail: str | None = None) -> SourceHealth:
+        return SourceHealth(source.key, state, detail, utc_now())
+
+    if not HLS_URL_PATTERN.search(source.url):
+        return health("unknown", "page source; not probed")
+    try:
+        response = client.get(source.url)
+    except httpx.TimeoutException:
+        return health("offline", "timed out")
+    except httpx.HTTPError:
+        return health("offline", "could not be reached")
+    if response.status_code in OFF_SCHEDULE_STATUSES:
+        return health("idle", "off schedule")
+    if not response.is_success:
+        return health("offline", f"HTTP {response.status_code}")
+    try:
+        check_playlist_body(response.text, source.label)
+    except LiveSourceError as exc:
+        return health("idle", str(exc))
+    return health("live")
+
+
+_health_lock = threading.Lock()
+# (monotonic deadline, registry signature, result). Timestamped rather than
+# per-key so one browser poll costs ONC one request per camera however many tabs
+# are open; the signature drops the cache if the registry itself changed.
+_health_cache: tuple[float, tuple[tuple[str, str], ...], dict[str, SourceHealth]] | None = None
+
+
+def reset_health_cache() -> None:
+    """Forget the cached probe. For tests; nothing in the app needs it."""
+
+    global _health_cache
+    with _health_lock:
+        _health_cache = None
+
+
+def probe_sources(sources, settings: Settings, client=None) -> dict[str, SourceHealth]:
+    """Probe every configured camera concurrently, briefly cached.
+
+    A camera that is down must not make the caller wait on the others, so each
+    request carries its own short timeout and they run together.
+    """
+
+    global _health_cache
+    sources = list(sources)
+    signature = tuple((source.key, source.url) for source in sources)
+    with _health_lock:
+        cached = _health_cache
+    if cached is not None and cached[1] == signature and time.monotonic() < cached[0]:
+        return cached[2]
+    if client is None:
+        with httpx.Client(timeout=settings.live_health_timeout_seconds,
+                          follow_redirects=True) as owned:
+            return probe_sources(sources, settings, owned)
+    if sources:
+        # One thread per camera so a hanging one costs only its own timeout. The
+        # cap is well above the seventeen that ship; a far larger registry probes
+        # in waves rather than opening unbounded threads.
+        with ThreadPoolExecutor(max_workers=min(len(sources), 32)) as pool:
+            results = list(pool.map(lambda source: probe_source(source, settings, client), sources))
+    else:
+        results = []
+    health = {result.key: result for result in results}
+    with _health_lock:
+        _health_cache = (time.monotonic() + settings.live_health_cache_seconds, signature, health)
+    return health
 
 
 def resolve_stream(url: str, settings: Settings, label: str | None = None, client=None) -> str:

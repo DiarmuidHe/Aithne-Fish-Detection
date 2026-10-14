@@ -101,10 +101,11 @@ export function fetchTrackThumbnails(videoId: string): Promise<TrackThumbnail[]>
   return request<TrackThumbnail[]>(`/videos/${encodeURIComponent(videoId)}/thumbnails`);
 }
 
-export function uploadVideo(file: File, cameraId: string): Promise<Video> {
+export function uploadVideo(file: File, cameraId: string, syncToCvat = false): Promise<Video> {
   const body = new FormData();
   body.append('file', file);
   if (cameraId.trim()) body.append('camera_id', cameraId.trim());
+  if (syncToCvat) body.append('sync_to_cvat', 'true');
   return request<Video>('/videos', { method: 'POST', body });
 }
 

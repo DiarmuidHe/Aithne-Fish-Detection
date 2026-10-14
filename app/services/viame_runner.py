@@ -22,6 +22,10 @@ class VIAMERunnerError(RuntimeError):
     pass
 
 
+class VIAMETimeoutError(VIAMERunnerError):
+    """Inference exceeded its deadline; live capture can retry smaller segments."""
+
+
 @dataclass(frozen=True)
 class VIAMERunResult:
     job_dir: Path
@@ -97,7 +101,7 @@ class VIAMERunner:
         except subprocess.TimeoutExpired as exc:
             stdout_log_path.write_text(_captured_text(exc.stdout), encoding="utf-8")
             stderr_log_path.write_text(_captured_text(exc.stderr), encoding="utf-8")
-            raise VIAMERunnerError(
+            raise VIAMETimeoutError(
                 f"VIAME timed out after {self.settings.viame_timeout_seconds} seconds"
             ) from exc
 

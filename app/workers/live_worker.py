@@ -22,7 +22,7 @@ from app.services.live_recording import RecordingWriter, finalize_live_recording
 from app.services.live_source import LiveSourceError, SegmentCapture, resolve_stream
 from app.services.live_species import SpeciesIdentifier
 from app.services.viame_parser import parse_viame_csv
-from app.services.viame_runner import build_viame_runner
+from app.services.viame_runner import VIAMETimeoutError, build_viame_runner
 from app.services.video_media import check_live_video_runtime
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ def detect_segment(segment, settings, session_id):
         "viame_downsample_fps": settings.live_fps})
     job_id = uuid.uuid4()
     succeeded = False
+    started = time.monotonic()
     try:
         result = build_viame_runner(configured).run(segment.path, job_id)
         parsed = parse_viame_csv(result.output_csv_path, fps=settings.live_fps,
@@ -43,6 +44,8 @@ def detect_segment(segment, settings, session_id):
         if parsed.skipped_rows:
             raise RuntimeError("VIAME returned malformed live detections")
         succeeded = True
+        logger.info("Live segment analyzed in %.1fs: %s observations (session %s)",
+                    time.monotonic() - started, len(parsed.detections), session_id)
         return parsed.detections
     finally:
         directory = live_path(settings, str(session_id), "inference", str(job_id))
@@ -160,6 +163,7 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
         tracker = None
         recorder = RecordingWriter(session_id, settings) if settings.live_recording_enabled else None
         retries, retry_at = 0, 0.0
+        capture_settings = settings
         executor = ThreadPoolExecutor(max_workers=1)
         final_status, error = "stopped", None
         try:
@@ -176,7 +180,7 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
                         continue
                     try:
                         observations = pending.result()
-                    except Exception:
+                    except Exception as exc:
                         # A detector crash costs one segment, not the session: VIAME can
                         # fault on a single chunk and run normally on the next one.
                         logger.warning("Live detection failed for a segment", exc_info=True)
@@ -185,6 +189,22 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
                         retries += 1
                         session.dropped_segments += 1
                         session.error_message = "A camera segment could not be analyzed and was skipped"
+                        if isinstance(exc, VIAMETimeoutError):
+                            # Repeating the same oversized batch can time out forever.
+                            # Reopen capture at a smaller duration, keeping FPS, image
+                            # detail and detection thresholds unchanged. The new capture
+                            # owns a fresh timestamp anchor, so the gap remains visible.
+                            seconds = max(0.5, capture_settings.live_segment_seconds / 2)
+                            capture_settings = capture_settings.model_copy(
+                                update={"live_segment_seconds": seconds})
+                            capture.close()
+                            capture = None
+                            session.status = "reconnecting"
+                            session.reconnect_count += 1
+                            session.error_message = (
+                                f"Detector timed out after {settings.live_detector_timeout_seconds:g}s; "
+                                f"retrying with {seconds:g}s camera segments")
+                            logger.warning("%s (session %s)", session.error_message, session_id)
                         db.commit()
                         if retries > settings.live_max_retries:
                             raise
@@ -259,7 +279,7 @@ def run_session(session_id, settings, factory=SessionLocal, shutdown=None,
                         db.commit()
                         url = resolver(session.source_url, settings, label)
                         directory = live_path(settings, str(session_id), "capture", str(uuid.uuid4()))
-                        capture = capture_factory(url, directory, settings)
+                        capture = capture_factory(url, directory, capture_settings)
                     segment = capture.next_segment()
                     if capture.dropped:
                         session.dropped_segments += capture.dropped

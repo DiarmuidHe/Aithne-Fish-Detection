@@ -9,6 +9,7 @@ data/uploads/*
 data/jobs/*
 data/outputs/*
 data/product-validation
+data/cvat-community
 
 # The host's node_modules is built for the host OS. Copying it into the image
 # overwrites the one `npm ci` just built there, leaving Windows shims that look

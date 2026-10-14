@@ -1,0 +1,35 @@
+# =============================================================================
+# Title: Fish detections only (offline experiment)
+#
+# Description: The production fish detector (common_fish_detector_box_only.pipe)
+# on every input frame, with no downsampler and no tracker. Its CSV is replayed
+# through bytetrack_replay.pipe so tracker settings can be swept without
+# re-running the detector. Never used by the application.
+# =============================================================================
+
+config _pipeline:_edge
+  :capacity                                    5
+
+config _scheduler
+  :type                                        pythread_per_process
+
+include common_default_input.pipe
+
+include common_fish_detector_box_only.pipe
+
+connect from input.image
+        to   detector_input.image
+
+process detector_writer
+  :: detected_object_output
+  :file_name                                   computed_detections.csv
+  :writer:type                                 viame_csv
+
+connect from detector_output.detected_object_set
+        to   detector_writer.detected_object_set
+connect from input.file_name
+        to   detector_writer.image_file_name
+connect from input.timestamp
+        to   detector_writer.timestamp
+
+# -- end of file --

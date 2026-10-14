@@ -8,7 +8,7 @@ import pytest
 
 from app.config import Settings
 from app.services import viame_runner
-from app.services.viame_runner import VIAMERunner, VIAMERunnerError
+from app.services.viame_runner import VIAMERunner, VIAMETimeoutError
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def test_timeout_logs_partial_output_captured_as_bytes(runner_settings, tmp_path
 
     monkeypatch.setattr(viame_runner.subprocess, "run", timeout)
     job_id = uuid.uuid4()
-    with pytest.raises(VIAMERunnerError, match="timed out"):
+    with pytest.raises(VIAMETimeoutError, match="timed out"):
         VIAMERunner(runner_settings).run(video, job_id)
 
     stderr_log = next((runner_settings.job_root / str(job_id)).glob("*/viame_stderr.log"))

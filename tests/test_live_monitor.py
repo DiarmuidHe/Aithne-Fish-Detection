@@ -409,7 +409,11 @@ def test_queued_session_can_stop_without_worker(client, test_settings):
 def test_sources_endpoint_lists_the_registry_in_order(client, test_settings):
     body = client.get("/live/sources").json()
     assert [source["key"] for source in body["sources"]] == [
-        "coral-city", "smartbay-cam1", "smartbay-cam2", "smartbay-cam3"]
+        source.key for source in test_settings.live_source_registry]
+    # The four original cameras keep their order at the head of the list; the ONC
+    # thirteen follow. tests/test_live_health.py covers the registry's contents.
+    assert [source["key"] for source in body["sources"][:5]] == [
+        "coral-city", "smartbay-cam1", "smartbay-cam2", "smartbay-cam3", "onc-folger-pinnacle"]
     assert body["default_key"] == "coral-city" and body["enabled"] is False and body["available"] is False
     assert all(source["active_session_id"] is None for source in body["sources"])
     coral = body["sources"][0]
@@ -506,6 +510,29 @@ def test_idle_master_playlist_is_reported_as_not_broadcasting(test_settings):
     with httpx.Client(transport=httpx.MockTransport(scraped)) as client:
         with pytest.raises(LiveSourceError, match="not currently broadcasting"):
             resolve_stream("https://camera.example/", test_settings, "Coral City Camera", client)
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_an_off_schedule_camera_is_named_rather_than_left_to_ffmpeg(test_settings, status):
+    # A duty-cycled ONC camera's media server 404s between its windows. Handing that
+    # to FFmpeg produces an opaque failure seconds later; the operator needs to be
+    # told the camera is simply not on right now.
+    url = test_settings.live_source("onc-endeavour-mothra").url
+    with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status))) as client:
+        with pytest.raises(LiveSourceError, match="not currently broadcasting"):
+            resolve_stream(url, test_settings, "ONC Endeavour Mothra", client)
+
+
+def test_other_transport_failures_stay_with_the_reconnect_path(test_settings, monkeypatch):
+    # A 5xx or a dropped connection says nothing about the camera's schedule, so the
+    # URL still goes to FFmpeg and the worker's backoff decides.
+    import app.services.live_source as source
+
+    monkeypatch.setattr(source.subprocess, "run",
+                        lambda *args, **kwargs: pytest.fail("yt-dlp must not be reached"))
+    url = test_settings.live_source("smartbay-cam1").url
+    with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(503))) as client:
+        assert resolve_stream(url, test_settings, "SmartBay Cam 1", client) == url
 
 
 def test_registry_overrides_keep_existing_deployments_working():
@@ -782,15 +809,23 @@ def test_worker_overlaps_next_inference_with_current_rendering(
         assert db.get(LiveMonitorSession, sid).frames_processed == 2
 
 
-def test_detector_crash_skips_one_segment_and_keeps_monitoring(db_session_factory, test_settings, synthetic_frame):
+@pytest.mark.parametrize("timeout", [False, True])
+def test_detector_crash_skips_one_segment_and_keeps_monitoring(db_session_factory, test_settings, synthetic_frame, timeout):
+    from app.services.viame_runner import VIAMETimeoutError
+
     shutdown = threading.Event()
     now = utc_now()
     test_settings.live_retry_seconds = 0.01
+    test_settings.live_segment_seconds = 60
+    durations, closed = [], []
 
     class Capture:
         dropped = 0
 
         def __init__(self, url, directory, settings):
+            durations.append(settings.live_segment_seconds)
+            assert settings.live_fps == test_settings.live_fps
+            assert settings.live_capture_width == test_settings.live_capture_width
             directory.mkdir(parents=True)
             self.directory, self.served = directory, 0
             self.cv2 = video_media.load_cv2()
@@ -809,7 +844,7 @@ def test_detector_crash_skips_one_segment_and_keeps_monitoring(db_session_factor
             return Segment(path, now + timedelta(seconds=self.served))
 
         def close(self):
-            pass
+            closed.append(self.directory)
 
     calls = []
 
@@ -817,6 +852,8 @@ def test_detector_crash_skips_one_segment_and_keeps_monitoring(db_session_factor
         calls.append(segment.path.name)
         # VIAME can fault on one chunk (a CUDA/ONNX segfault) and run fine on the next.
         if len(calls) == 1:
+            if timeout:
+                raise VIAMETimeoutError("VIAME timed out after 180 seconds")
             raise RuntimeError("VIAME exited with code -11")
         return [detection(frame=i) for i in range(3)]
 
@@ -829,11 +866,17 @@ def test_detector_crash_skips_one_segment_and_keeps_monitoring(db_session_factor
         session = db.get(LiveMonitorSession, sid)
         assert session.status == "stopped"
         assert session.dropped_segments == 1
-        assert session.frames_processed == 3
+        assert session.frames_processed == (6 if timeout else 3)
+        assert session.reconnect_count == int(timeout)
         assert db.scalar(select(func.count()).select_from(LiveFishTrack)) == 1
+    assert durations == ([60, 30] if timeout else [60])
+    assert len(closed) == len(durations)
+    assert test_settings.live_segment_seconds == 60
 
 
-def test_repeated_detector_failure_still_fails_the_session(db_session_factory, test_settings, synthetic_frame):
+@pytest.mark.parametrize("timeout", [False, True])
+def test_repeated_detector_failure_still_fails_the_session(db_session_factory, test_settings, synthetic_frame, timeout):
+    from app.services.viame_runner import VIAMETimeoutError
     shutdown = threading.Event()
     now = utc_now()
     test_settings.live_retry_seconds = 0.01
@@ -860,6 +903,8 @@ def test_repeated_detector_failure_still_fails_the_session(db_session_factory, t
             pass
 
     def broken_detector(*_):
+        if timeout:
+            raise VIAMETimeoutError("VIAME timed out")
         raise RuntimeError("VIAME exited with code -11")
 
     with db_session_factory() as db:

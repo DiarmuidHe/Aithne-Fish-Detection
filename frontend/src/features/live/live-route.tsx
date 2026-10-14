@@ -1,11 +1,12 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { LiveTrack } from '@/api/types';
+import type { LiveSource, LiveSourceHealth, LiveSourcesHealth, LiveTrack } from '@/api/types';
 import {
   fetchLiveActivity,
   fetchLiveClips,
   fetchLiveLatest,
+  fetchLiveSourceHealth,
   fetchLiveSources,
   fetchLiveSpecies,
   liveSnapshotUrl,
@@ -26,7 +27,7 @@ import { SingleSelect } from '@/components/base/select';
 import { ColumnChart } from '@/components/charts/bar-chart';
 import { AppBarSlot, Band, Page } from '@/components/layout/shell';
 import { useToast } from '@/components/base/toast';
-import { PlayIcon, StopIcon } from '@/icons';
+import { ChevronRightIcon, PlayIcon, StopIcon } from '@/icons';
 import { useDocumentVisible } from '@/hooks/use-poll';
 import { formatClock, formatCount, formatPercent, plural } from '@/lib/format';
 import { IdentifyFishButton } from '@/features/species/identify-fish';
@@ -39,6 +40,15 @@ const OPEN_STATUSES = new Set(['queued', 'starting', 'running', 'reconnecting', 
 
 const SOURCE_KEY_STORAGE = 'live-source-key';
 const SPECIES_TARGET_STORAGE = 'live-species-fish-target';
+const CAMERA_LIST_STORAGE = 'live-camera-list-open';
+
+/*
+ * Most of the registry is duty-cycled - the ONC seafloor cameras typically run
+ * five minutes at the top of the hour - so the order that matters is "what could
+ * produce frames if I started it now". A page source is not probed and may well
+ * be broadcasting, so it outranks a camera we know is off its schedule.
+ */
+const STATE_ORDER: Record<string, number> = { live: 0, unknown: 1, idle: 2, offline: 3 };
 
 type GallerySort = 'recent' | 'duration' | 'confidence';
 
@@ -67,6 +77,18 @@ export function LiveRoute() {
   const [gallerySort, setGallerySort] = React.useState<GallerySort>('recent');
 
   const sources = useQuery({ queryKey: ['live-sources'], queryFn: fetchLiveSources });
+
+  /*
+   * Which cameras are broadcasting right now. Deliberately its own query: it
+   * probes the outside world, and a failure here must leave the camera list and
+   * the session controls working rather than becoming a route error.
+   */
+  const health = useQuery({
+    queryKey: ['live-source-health'],
+    queryFn: fetchLiveSourceHealth,
+    enabled: Boolean(sources.data?.enabled),
+    refetchInterval: 30_000,
+  });
 
   // Only one session runs at a time, so a reload or a second tab must show the
   // camera that is actually being analyzed rather than a remembered one.
@@ -229,8 +251,14 @@ export function LiveRoute() {
             }}
             options={(sources.data?.sources ?? []).map((source) => ({
               value: source.key,
+              // A running session is the stronger fact about a camera than its
+              // broadcast state, so it takes the one suffix slot.
               label: `${source.label}${source.location ? ` · ${source.location}` : ''}${
-                source.active_session_id ? ' · monitoring' : ''
+                source.active_session_id
+                  ? ' · monitoring'
+                  : health.data?.sources[source.key]
+                    ? ` · ${health.data.sources[source.key].state}`
+                    : ''
               }`,
             }))}
           />
@@ -272,6 +300,8 @@ export function LiveRoute() {
                 : 'One camera at a time.'}
           </p>
         </div>
+
+        <CameraDirectory sources={sources.data?.sources ?? []} health={health.data} />
 
         <div className={styles.body}>
           <div className={styles.stage}>
@@ -515,6 +545,129 @@ export function LiveRoute() {
       ) : null}
     </Page>
   );
+}
+
+/**
+ * Every configured camera and whether it is broadcasting, behind a disclosure.
+ *
+ * Seventeen rows is too many to leave open above the footage, but "is this camera
+ * on right now?" is the question an operator has before they start anything, and
+ * the only other way to answer it is to start a session and watch it fail. Each
+ * row carries its licence, and a link to a page the camera is actually watchable
+ * on - never the playlist URL, which Chrome renders as a black frame stuck at
+ * 0:00 whether the camera is broadcasting or not.
+ */
+function CameraDirectory({
+  sources,
+  health,
+}: {
+  sources: LiveSource[];
+  health: LiveSourcesHealth | undefined;
+}) {
+  const [open, setOpen] = React.useState(() => stored(CAMERA_LIST_STORAGE) === 'true');
+  const states = health?.enabled ? health.sources : undefined;
+
+  const rows = React.useMemo(() => {
+    if (!states) return sources;
+    return [...sources].sort(
+      (left, right) =>
+        (STATE_ORDER[states[left.key]?.state ?? 'unknown'] ?? 9) -
+        (STATE_ORDER[states[right.key]?.state ?? 'unknown'] ?? 9),
+    );
+  }, [sources, states]);
+
+  const summary = React.useMemo(() => {
+    if (!states) return plural(sources.length, 'camera');
+    const counts = new Map<string, number>();
+    for (const source of sources) {
+      const state = states[source.key]?.state ?? 'unknown';
+      counts.set(state, (counts.get(state) ?? 0) + 1);
+    }
+    return [...counts]
+      .sort(([left], [right]) => (STATE_ORDER[left] ?? 9) - (STATE_ORDER[right] ?? 9))
+      .map(([state, count]) => `${count} ${state}`)
+      .join(' · ');
+  }, [sources, states]);
+
+  if (sources.length === 0) return null;
+
+  return (
+    <section className={styles.directory}>
+      <button
+        type="button"
+        className={styles.directoryToggle}
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open);
+          store(CAMERA_LIST_STORAGE, String(!open));
+        }}
+      >
+        <ChevronRightIcon className={styles.directoryChevron} data-open={open || undefined} />
+        <span className="label">Cameras</span>
+        <span className={styles.directoryCount}>{summary}</span>
+      </button>
+
+      {open ? (
+        <ul className={styles.cameraList}>
+          {rows.map((source) => (
+            <CameraRow key={source.key} source={source} health={states?.[source.key]} />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function CameraRow({
+  source,
+  health,
+}: {
+  source: LiveSource;
+  health: LiveSourceHealth | undefined;
+}) {
+  const state = health?.state ?? 'unknown';
+  return (
+    <li className={styles.cameraRow} data-state={state}>
+      {/* The dot is decoration; the word beside it is what a reader is told. */}
+      <span className={styles.cameraDot} aria-hidden="true" />
+      <span className={styles.cameraName}>
+        {source.label}
+        {source.location ? <span className={styles.cameraWhere}>{source.location}</span> : null}
+      </span>
+      <span className={styles.cameraState}>{health ? state : 'not checked'}</span>
+      <span className={styles.cameraDetail} title={health?.detail ?? undefined}>
+        {health?.detail ?? ''}
+      </span>
+      {source.attribution ? (
+        <span className={styles.cameraCredit} title={source.attribution}>
+          {source.attribution}
+        </span>
+      ) : null}
+      {source.info_url ? (
+        <a
+          className={styles.cameraLink}
+          href={source.info_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {watchLabel(source.info_url)}
+          <span aria-hidden="true"> ↗</span>
+        </a>
+      ) : null}
+    </li>
+  );
+}
+
+/** Name the page the link leads to, so it is clear where it goes before it opens. */
+function watchLabel(infoUrl: string): string {
+  try {
+    const host = new URL(infoUrl).hostname.replace(/^www\./, '');
+    if (host.endsWith('oceannetworks.ca')) return 'Watch on ONC';
+    if (host.endsWith('marine.ie')) return 'Watch on SmartBay';
+    return `Watch on ${host}`;
+  } catch {
+    return 'Watch';
+  }
 }
 
 /**

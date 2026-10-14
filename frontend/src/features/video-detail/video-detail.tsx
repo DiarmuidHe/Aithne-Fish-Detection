@@ -27,6 +27,7 @@ import { formatBytes, formatDateTime, formatDuration } from '@/lib/format';
 import { AnalyticsTab } from './analytics-tab';
 import { AnnotatedTab } from './annotated-tab';
 import { ClipsTab } from './clips-tab';
+import { CvatDevPanel } from './cvat-dev-panel';
 import { SummaryTab } from './summary-tab';
 import { TracksTab } from './tracks-tab';
 import styles from './detail.module.css';
@@ -232,6 +233,8 @@ export function VideoDetail({
             Processing did not complete. {jobError}
           </p>
         ) : null}
+
+        <CvatDevPanel videoId={videoId} />
 
         <div className={styles.actions}>
           <Button

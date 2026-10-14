@@ -60,6 +60,12 @@ services:
       LIVE_FPS: "${LIVE_FPS:-4}"
       LIVE_ACTIVITY_WINDOW_SECONDS: "${LIVE_ACTIVITY_WINDOW_SECONDS:-60}"
       LIVE_WORKER_STALE_SECONDS: "${LIVE_WORKER_STALE_SECONDS:-120}"
+      CVAT_DEV_MODE: "${CVAT_DEV_MODE:-false}"
+      CVAT_URL: "${CVAT_URL:-http://host.docker.internal:8080}"
+      CVAT_PUBLIC_URL: "${CVAT_PUBLIC_URL:-http://localhost:8080}"
+      CVAT_ACCESS_TOKEN: "${CVAT_ACCESS_TOKEN:-}"
+      CVAT_USERNAME: "${CVAT_USERNAME:-}"
+      CVAT_PASSWORD: "${CVAT_PASSWORD:-}"
     volumes:
       - ./data:/data
     ports:
@@ -111,6 +117,12 @@ services:
       LIVE_MAX_PENDING_SEGMENTS: "${LIVE_MAX_PENDING_SEGMENTS:-3}"
       LIVE_RECORDING_ENABLED: "${LIVE_RECORDING_ENABLED:-true}"
       LIVE_RECORDING_MAX_BYTES: "${LIVE_RECORDING_MAX_BYTES:-8589934592}"
+      CVAT_DEV_MODE: "${CVAT_DEV_MODE:-false}"
+      CVAT_URL: "${CVAT_URL:-http://host.docker.internal:8080}"
+      CVAT_PUBLIC_URL: "${CVAT_PUBLIC_URL:-http://localhost:8080}"
+      CVAT_ACCESS_TOKEN: "${CVAT_ACCESS_TOKEN:-}"
+      CVAT_USERNAME: "${CVAT_USERNAME:-}"
+      CVAT_PASSWORD: "${CVAT_PASSWORD:-}"
     volumes:
       - ./data:/data
     depends_on:

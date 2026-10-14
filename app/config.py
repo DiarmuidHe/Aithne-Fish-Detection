@@ -36,6 +36,36 @@ class LiveCameraSource(BaseModel):
     # Optional key into app.services.species_region.REGIONS. Unset means "no
     # regional filtering", so a camera we have no species list for never regresses.
     region: str | None = None
+    # A page a human can actually watch this camera on. Chrome plays no HLS, so a
+    # bare .m3u8 handed to an operator is a black frame stuck at 0:00 even while
+    # the camera is broadcasting normally; the UI links here instead.
+    info_url: str | None = None
+    # Licence/credit line carried through to the UI. The ONC cameras are
+    # non-commercial, which an operator preparing a demo has to be able to see.
+    attribution: str | None = None
+
+
+SMARTBAY_INFO_URL = "https://smartbay.marine.ie/"
+SMARTBAY_ATTRIBUTION = "Marine Institute SmartBay Observatory (CC BY 4.0)"
+ONC_INFO_URL = "https://www.oceannetworks.ca/multimedia/live-cameras/"
+# Not the CC BY 4.0 that covers ONC's data portal: the live camera video is
+# share-alike and NON-COMMERCIAL, so these thirteen are unsuitable for a
+# commercial demo. The string is carried to the UI so that is visible there.
+ONC_ATTRIBUTION = "Ocean Networks Canada (CC BY-NC-SA 3.0)"
+ONC_MEDIA_BASE = "https://media.oceannetworks.ca:4935/rtplive"
+
+
+def _onc(key: str, label: str, location: str, stream: str) -> dict[str, str]:
+    """One ONC seafloor camera.
+
+    ``region`` is deliberately never set: species_region has no Northeast Pacific
+    list, and the filter is opt-in, so unset accepts every name rather than
+    silently dropping identifications.
+    """
+
+    return {"key": key, "label": label, "location": location,
+            "url": f"{ONC_MEDIA_BASE}/{stream}/playlist.m3u8",
+            "info_url": ONC_INFO_URL, "attribution": ONC_ATTRIBUTION}
 
 
 DEFAULT_LIVE_SOURCES: list[dict[str, str]] = [
@@ -44,19 +74,46 @@ DEFAULT_LIVE_SOURCES: list[dict[str, str]] = [
     {"key": "coral-city", "label": "Coral City Camera", "location": "Miami, Florida",
      "url": DEFAULT_CORAL_CITY_URL},
     {"key": "smartbay-cam1", "label": "SmartBay Cam 1", "location": "Galway Bay, Ireland",
-     "region": "north_east_atlantic",
+     "region": "north_east_atlantic", "info_url": SMARTBAY_INFO_URL,
+     "attribution": SMARTBAY_ATTRIBUTION,
      "url": "https://live.heanet.ie/261512497d1945a09c73de7f05421dd9/ngrp:_all/playlist.m3u8"},
     {"key": "smartbay-cam2", "label": "SmartBay Cam 2", "location": "Galway Bay, Ireland",
-     "region": "north_east_atlantic",
+     "region": "north_east_atlantic", "info_url": SMARTBAY_INFO_URL,
+     "attribution": SMARTBAY_ATTRIBUTION,
      "url": "https://live.heanet.ie/6c3ea7d05d754f26ba324d2a59c5d26b/ngrp:_all/playlist.m3u8"},
     {"key": "smartbay-cam3", "label": "SmartBay Cam 3 (ANERIS EMUAS)", "location": "Galway Bay, Ireland",
-     "region": "north_east_atlantic",
+     "region": "north_east_atlantic", "info_url": SMARTBAY_INFO_URL,
+     "attribution": SMARTBAY_ATTRIBUTION,
      "url": "https://live.heanet.ie/7b451dbe046149c4bba3d0e93792fae6/ngrp:_all/playlist.m3u8"},
+    # --- Ocean Networks Canada. Duty-cycled: typically five minutes at the top of
+    # each hour, some every four hours. Between windows the playlist 404s, which is
+    # the schedule rather than a fault, so the health probe reports it as idle.
+    _onc("onc-folger-pinnacle", "ONC Folger Pinnacle", "Barkley Sound, BC",
+         "AXISQ6074EPTZACCC8EACA579"),
+    _onc("onc-china-creek", "ONC China Creek", "Alberni Inlet, BC", "AXISCAMB8A44FB27F40"),
+    _onc("onc-campbell-river", "ONC Campbell River", "Campbell River, BC", "AXISCAMB8A44F271FBC"),
+    _onc("onc-digby-island", "ONC Digby Island", "Prince Rupert, BC", "AXISCAMB8A44F271FE9"),
+    _onc("onc-kitamaat-village", "ONC Kitamaat Village", "Douglas Channel, BC",
+         "AXISCAMACCC8ED95D9B"),
+    _onc("onc-hartley-bay", "ONC Hartley Bay", "Hartley Bay, BC", "AXISCAMB8A44F78A6A8"),
+    _onc("onc-holyrood-bay", "ONC Holyrood Bay", "Conception Bay, NL", "SUBCRAYFIN21017"),
+    _onc("onc-barkley-axis", "ONC Barkley Canyon Axis", "Barkley Canyon, BC",
+         "AXISCAMB8A44F720E0D"),
+    _onc("onc-barkley-upper-slope", "ONC Barkley Canyon Upper Slope", "Barkley Canyon, BC",
+         "Z3CAM50009901224910005"),
+    _onc("onc-cascadia-basin", "ONC Cascadia Basin", "Cascadia Basin, BC",
+         "Z3CAM50016501240910002"),
+    _onc("onc-clayoquot-bullseye", "ONC Clayoquot Bullseye", "Clayoquot Slope, BC",
+         "SUBCCAMMK6HDC_17690"),
+    _onc("onc-endeavour-mothra", "ONC Endeavour Mothra", "Endeavour Ridge",
+         "DRAGONFISHSUBC13113"),
+    _onc("onc-tempo-mini", "ONC Tempo Mini — Main Endeavour", "Endeavour Ridge",
+         "SMOOVECAMTEMPOMINISMO002"),
 ]
 
 
 class Settings(BaseSettings):
-    app_name: str = "Fish Monitor"
+    app_name: str = "Aithne"
     environment: str = "development"
 
     database_url: str = "postgresql+psycopg://fish:fish@localhost:5432/fish_monitor"
@@ -70,6 +127,14 @@ class Settings(BaseSettings):
     output_root: Path = Path("data/outputs")
     max_upload_bytes: int = 5 * 1024 * 1024 * 1024
     allowed_video_extensions: str = ".mp4,.mov,.avi,.mkv"
+
+    # Explicitly opt in to local CVAT synchronization for development uploads.
+    cvat_dev_mode: bool = False
+    cvat_url: str = "http://host.docker.internal:8080"
+    cvat_public_url: str = "http://localhost:8080"
+    cvat_access_token: SecretStr | None = None
+    cvat_username: str | None = None
+    cvat_password: SecretStr | None = None
 
     viame_mock: bool = False
     deployment_mode: Literal["auto", "mock", "gpu"] = "auto"
@@ -161,6 +226,16 @@ class Settings(BaseSettings):
     coral_city_url: str = DEFAULT_CORAL_CITY_URL
     live_default_source_key: str = "coral-city"
     live_monitor_enabled: bool = False
+    # --- Which cameras are broadcasting right now ---
+    # Most of the registry is duty-cycled (the ONC cameras typically run five
+    # minutes an hour), so "the camera is in the dropdown" says nothing about
+    # whether starting a session will get frames. One short GET per configured
+    # .m3u8, run concurrently and cached, answers that without starting one.
+    live_health_enabled: bool = True
+    live_health_timeout_seconds: float = Field(default=2.0, gt=0)
+    # The dashboard polls every 30s; the cache means one probe per camera per
+    # window however many browser tabs are open.
+    live_health_cache_seconds: int = Field(default=20, ge=0)
     live_lost_track_seconds: float = Field(default=10.0, gt=0)
     # Long chunks amortize VIAME startup. The ceiling only bounds how much footage a
     # single failed chunk can cost, and how far the annotated view trails the camera.
@@ -371,6 +446,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"Live source {source.key!r} needs a label")
             if urlparse(source.url).scheme not in {"http", "https"}:
                 raise ValueError(f"Live source {source.key!r} needs an HTTP(S) URL")
+            # The UI turns info_url into a link an operator clicks, so it gets the
+            # same scheme check the stream URL does.
+            if source.info_url is not None and urlparse(source.info_url).scheme not in {"http", "https"}:
+                raise ValueError(f"Live source {source.key!r} needs an HTTP(S) info URL")
             keys.add(source.key)
         if self.live_default_source_key not in keys:
             raise ValueError(

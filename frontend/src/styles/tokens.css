@@ -124,6 +124,12 @@
    * a focus ring. Nothing inert may borrow it, and nothing that is merely
    * finished or merely running may borrow it either.
    */
+  /*
+   * The brand mark on a content ground. Blue is reserved for what you can act
+   * on, so the mark takes the forest ramp and never the accent.
+   */
+  --brand-mark: var(--brand-forest);
+
   --accent: var(--palette-action);
   --accent-hover: var(--palette-action-deep);
   --accent-active: var(--palette-action-deepest);
@@ -325,6 +331,8 @@
     --hairline: #333937;
     --hairline-strong: #4e5551;
 
+    --brand-mark: var(--brand-sage);
+
     --accent: #74a9d0;
     --accent-hover: #93bfdf;
     --accent-active: #b1d3ea;
@@ -392,6 +400,8 @@
 
   --hairline: #333937;
   --hairline-strong: #4e5551;
+
+  --brand-mark: var(--brand-sage);
 
   --accent: #74a9d0;
   --accent-hover: #93bfdf;

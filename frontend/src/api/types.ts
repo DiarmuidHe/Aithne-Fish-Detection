@@ -423,7 +423,29 @@ export interface LiveSource {
   label: string;
   location: string | null;
   url: string;
+  /**
+   * A page a human can watch this camera on. Never the stream URL: Chrome plays
+   * no HLS, so a bare .m3u8 shows a black frame stuck at 0:00 even while the
+   * camera is broadcasting.
+   */
+  info_url: string | null;
+  /** Licence and credit line for this camera's video. */
+  attribution: string | null;
   active_session_id: string | null;
+}
+
+/** Whether one camera is broadcasting right now. */
+export interface LiveSourceHealth {
+  state: 'live' | 'idle' | 'offline' | 'unknown';
+  detail: string | null;
+  checked_at: string;
+}
+
+export interface LiveSourcesHealth {
+  /** False when LIVE_HEALTH_ENABLED is off; `sources` is then empty. */
+  enabled: boolean;
+  checked_at: string;
+  sources: Record<string, LiveSourceHealth>;
 }
 
 export interface LiveSources {

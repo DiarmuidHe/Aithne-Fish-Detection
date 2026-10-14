@@ -4,12 +4,23 @@ import type {
   LiveLatest,
   LiveSession,
   LiveSources,
+  LiveSourcesHealth,
   LiveSpecies,
   LiveTrack,
 } from './types';
 
 export function fetchLiveSources(): Promise<LiveSources> {
   return request<LiveSources>('/live/sources');
+}
+
+/**
+ * Which cameras are broadcasting right now. Most are duty-cycled, so this is the
+ * difference between picking a camera that will produce frames and starting a
+ * session to find out. Answers `enabled: false` rather than failing when the
+ * deployment has the probe switched off.
+ */
+export function fetchLiveSourceHealth(): Promise<LiveSourcesHealth> {
+  return request<LiveSourcesHealth>('/live/sources/health');
 }
 
 export function fetchLiveLatest(sourceKey: string): Promise<LiveLatest> {

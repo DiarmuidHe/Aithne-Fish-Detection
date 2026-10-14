@@ -8,10 +8,10 @@ import { fetchFacets } from '@/api/videos';
 import { Skeleton } from '@/components/base/feedback';
 import { Hint } from '@/components/base/popups';
 import {
+  AithneMark,
   BroadcastIcon,
   CollapseIcon,
   FilmIcon,
-  FishMark,
   GaugeIcon,
   ReviewIcon,
   ServerIcon,
@@ -41,6 +41,9 @@ interface NavGroup {
   label: string;
   items: NavEntry[];
 }
+
+/** The product name. It belongs in the rail, the tab title and every fallback. */
+export const BRAND = 'Aithne';
 
 /** Titles for the application bar, longest path first so nesting resolves. */
 const PAGE_TITLES: [string, string][] = [
@@ -131,6 +134,13 @@ export function AppShell() {
     }
   }, [collapsed]);
 
+  // The tab, the history entry and the bookmark all say which screen of which
+  // product this is, which the rail alone cannot do once the window is behind
+  // something else.
+  React.useEffect(() => {
+    document.title = `${titleFor(location.pathname)} · ${BRAND}`;
+  }, [location.pathname]);
+
   const slots = React.useMemo(
     () => ({ context: contextSlot, actions: actionsSlot }),
     [contextSlot, actionsSlot],
@@ -141,22 +151,13 @@ export function AppShell() {
     <div className={styles.shell} data-collapsed={collapsed || undefined}>
       <nav className={styles.rail} aria-label="Sections">
         <div className={styles.brand}>
-          <NavLink to="/" className={styles.brandLink} title="Fish Monitor">
-            <FishMark className={styles.brandMark} />
+          <NavLink to="/" className={styles.brandLink} title={`${BRAND} — fish detection operations`}>
+            <AithneMark className={styles.brandMark} />
             <span className={styles.brandText}>
-              <span className={styles.brandName}>Fish Monitor</span>
-              <span className={styles.brandSub}>Detection operations</span>
+              <span className={styles.brandName}>{BRAND}</span>
+              <span className={styles.brandSub}>Fish detection operations</span>
             </span>
           </NavLink>
-          <button
-            type="button"
-            className={styles.collapseButton}
-            onClick={() => setCollapsed((value) => !value)}
-            aria-label={collapsed ? 'Expand the navigation rail' : 'Collapse the navigation rail'}
-            aria-pressed={collapsed}
-          >
-            <CollapseIcon />
-          </button>
         </div>
 
         <div className={styles.nav}>
@@ -213,8 +214,34 @@ export function AppShell() {
 
       <div className={styles.workspace}>
         <header className={styles.appBar}>
+          {/*
+           * The rail's handle lives on the bar, not inside the rail. A control
+           * that hides itself along with the thing it collapsed leaves no way
+           * back, so this one keeps its place in both states.
+           */}
+          <Hint content={collapsed ? `Show the ${BRAND} navigation` : 'Hide the navigation'}>
+            <button
+              type="button"
+              className={styles.railToggle}
+              onClick={() => setCollapsed((value) => !value)}
+              aria-label={collapsed ? 'Expand the navigation rail' : 'Collapse the navigation rail'}
+              aria-pressed={collapsed}
+              data-collapsed={collapsed || undefined}
+            >
+              <CollapseIcon />
+            </button>
+          </Hint>
           <div className={styles.appBarTitle}>
-            <h1 className={styles.appBarHeading}>{titleFor(location.pathname)}</h1>
+            <h1 className={styles.appBarHeading}>
+              {/*
+               * Whenever the rail is down to icons — shut by hand, or narrowed
+               * by the viewport — the wordmark would be nowhere on screen, so
+               * the bar carries it. CSS decides, because the viewport half of
+               * that condition is not something this component is told about.
+               */}
+              <span className={styles.appBarBrand}>{BRAND}</span>
+              {titleFor(location.pathname)}
+            </h1>
             <div className={styles.appBarContext} ref={setContextSlot} />
           </div>
           <div className={styles.appBarActions}>

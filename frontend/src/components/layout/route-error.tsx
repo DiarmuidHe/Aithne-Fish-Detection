@@ -5,6 +5,7 @@ import { Button } from '@/components/base/button';
 import { EmptyState } from '@/components/base/feedback';
 import { AlertIcon } from '@/icons';
 
+import { BRAND } from './shell';
 import styles from './shell.module.css';
 
 /**
@@ -21,7 +22,7 @@ export function RouteError() {
     <div className={styles.page}>
       <div className={styles.pageInner}>
         <EmptyState
-          title="This screen did not load"
+          title={`${BRAND} could not load this screen`}
           body={
             <>
               <AlertIcon /> {message}

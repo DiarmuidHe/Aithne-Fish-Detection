@@ -22,8 +22,11 @@ test -f "$INPUT_VIDEO"
 test -f "$VIAME_SETUP_SCRIPT"
 test -f "$VIAME_PIPELINE"
 
+# setup_viame.sh reads variables such as KWIVER_PLUGIN_PATH that may be unset.
+set +u
 # shellcheck disable=SC1090
 source "$VIAME_SETUP_SCRIPT"
+set -u
 
 kwiver runner -I "$VIAME_ROOT/configs/pipelines" "$VIAME_PIPELINE" \
   -s "input:video_filename=$INPUT_VIDEO" \

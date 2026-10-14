@@ -94,3 +94,26 @@
   line-height: var(--leading-sm);
   font-weight: var(--weight-medium);
 }
+
+/* --- About ----------------------------------------------------------------- */
+
+.about {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  max-width: 62ch;
+}
+
+.aboutMark {
+  flex: none;
+  width: 44px;
+  height: auto;
+  margin-top: 2px;
+  color: var(--brand-mark);
+}
+
+.aboutName {
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+  letter-spacing: -0.01em;
+}

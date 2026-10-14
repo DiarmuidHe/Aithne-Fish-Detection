@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { fetchCvatDevStatus } from '@/api/cvat';
 import { fetchSystemStatus } from '@/api/system';
 import { Button } from '@/components/base/button';
 import {
+  BRAND,
   MetricCard,
   MetricPlaceholder,
   MetricRow,
@@ -12,7 +14,7 @@ import {
   AppBarSlot,
 } from '@/components/layout/shell';
 import { PanelError, Skeleton, StatusPill } from '@/components/base/feedback';
-import { RefreshIcon } from '@/icons';
+import { AithneMark, RefreshIcon } from '@/icons';
 import { useConditionalPoll } from '@/hooks/use-poll';
 import { formatClock, formatCount } from '@/lib/format';
 import { ThemeToggle } from '@/components/layout/theme';
@@ -31,6 +33,7 @@ export function SystemRoute() {
     queryFn: fetchSystemStatus,
     refetchInterval: useConditionalPoll(true) && 15_000,
   });
+  const cvat = useQuery({ queryKey: ['cvat-dev-status'], queryFn: fetchCvatDevStatus });
 
   if (system.isLoading) {
     return (
@@ -147,6 +150,37 @@ export function SystemRoute() {
             </p>
           </div>
           <ThemeToggle />
+        </div>
+      </Section>
+
+      {cvat.data?.enabled ? (
+        <Section title="Development · CVAT">
+          <Panel title={cvat.data.configured ? 'CVAT video sync is ready' : 'CVAT needs credentials'}>
+            <p className="note">
+              New uploads can create CVAT tasks. Start VIAME processing from the video detail;
+              its first results will appear in CVAT as suggestions for human review.
+            </p>
+            {cvat.data.public_url ? (
+              <a href={cvat.data.public_url} target="_blank" rel="noopener noreferrer">
+                Open CVAT
+              </a>
+            ) : null}
+          </Panel>
+        </Section>
+      ) : null}
+
+      {/* The one screen an operator opens to ask what this is, so it says. */}
+      <Section title="About">
+        <div className={styles.about}>
+          <AithneMark className={styles.aboutMark} />
+          <div>
+            <p className={styles.aboutName}>{BRAND}</p>
+            <p className="note">
+              Automated fish detection and review for underwater video. Detections come
+              from {gpu ? 'VIAME running on the GPU' : 'the mock detector'}; every track
+              on this stack is reviewed and confirmed by a person before it counts.
+            </p>
+          </div>
         </div>
       </Section>
     </Page>

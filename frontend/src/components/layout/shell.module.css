@@ -27,8 +27,6 @@
   color: var(--chrome-ink);
   box-shadow: var(--shadow-spine);
   overflow: hidden;
-  /* The mark's eye is punched through to whatever sits behind it. */
-  --mark-eye: var(--chrome);
 }
 
 .brand {
@@ -53,8 +51,8 @@
 
 .brandMark {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: auto;
   color: var(--chrome-accent);
 }
 
@@ -82,33 +80,6 @@
   text-transform: uppercase;
   color: var(--chrome-ink-faint);
   white-space: nowrap;
-}
-
-.collapseButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--chrome-ink-faint);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out);
-}
-
-.collapseButton:hover {
-  background: var(--rail-hover);
-  color: var(--chrome-ink);
-}
-
-.collapseButton:focus-visible {
-  outline: 2px solid var(--chrome-accent);
-  outline-offset: 1px;
 }
 
 /* --- Rail navigation ------------------------------------------------------ */
@@ -322,10 +293,6 @@
   gap: 0;
 }
 
-.shell[data-collapsed] .collapseButton {
-  display: none;
-}
-
 /* --- Workspace ------------------------------------------------------------- */
 
 .workspace {
@@ -343,7 +310,7 @@
   justify-content: space-between;
   gap: var(--space-4);
   height: var(--appbar-height);
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-5) 0 var(--space-3);
   flex: none;
   background: var(--surface-raised);
   border-bottom: 1px solid var(--hairline);
@@ -357,19 +324,77 @@
   background: var(--brand-gradient);
 }
 
+/*
+ * The rail's handle. It sits at the bar's left edge, hard against the rail, so
+ * it reads as the rail's own control while living somewhere the rail cannot
+ * take it away.
+ */
+.railToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.railToggle:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
+.railToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Shut, the glyph fills in: the panel is a solid edge rather than a pane. */
+.railToggle[data-collapsed] svg rect {
+  fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+
 .appBarTitle {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
   min-width: 0;
+  flex: 1;
 }
 
 .appBarHeading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-size: var(--text-lg);
   line-height: var(--leading-lg);
   font-weight: var(--weight-strong);
   letter-spacing: -0.01em;
   white-space: nowrap;
+}
+
+/* The wordmark, shown only while the rail is too narrow to carry it. */
+.appBarBrand {
+  display: none;
+  color: var(--ink-muted);
+  font-weight: var(--weight-medium);
+}
+
+.shell[data-collapsed] .appBarBrand {
+  display: inline;
+}
+
+.appBarBrand::after {
+  content: '/';
+  margin-left: var(--space-2);
+  color: var(--hairline-strong);
 }
 
 /* Where a route puts its breadcrumb, filename or record position. */
@@ -892,8 +917,7 @@
   .brandText,
   .navLabel,
   .navCount,
-  .healthText,
-  .collapseButton {
+  .healthText {
     opacity: 0;
     width: 0;
     flex: 0 0 0;
@@ -914,6 +938,15 @@
   .health {
     justify-content: center;
     gap: 0;
+  }
+
+  .railToggle {
+    display: none;
+  }
+
+  /* The rail is pinned to icons at this width, so the bar always says Aithne. */
+  .appBarBrand {
+    display: inline;
   }
 
   .appBar {
@@ -937,5 +970,13 @@
   .metricRow[data-tone='console'] {
     margin-inline: calc(var(--space-4) * -1);
     margin-top: calc(var(--space-4) * -1);
+  }
+}
+
+/* On a phone the page title needs the whole bar, so the wordmark steps back. */
+@media (max-width: 600px) {
+  .appBarBrand,
+  .shell[data-collapsed] .appBarBrand {
+    display: none;
   }
 }

@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -40,6 +40,7 @@ from app.schemas.video import (
     VideoSummary,
 )
 from app.services.fish_counter import accepted_tracks, summarize_tracks
+from app.services.cvat_sync import configured as cvat_configured, queue_cvat_video, sync_cvat_video
 from app.services.library import (
     aggregate_videos,
     candidate_query,
@@ -70,12 +71,20 @@ router = APIRouter(prefix="/videos", tags=["videos"])
 
 @router.post("", response_model=VideoRead, status_code=status.HTTP_201_CREATED)
 async def create_video(
+    background: BackgroundTasks,
     file: UploadFile = File(...),
     camera_id: str | None = Form(None, max_length=128),
+    sync_to_cvat: bool = Form(False),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Video:
-    return await register_uploaded_video(db=db, upload=file, settings=settings, camera_id=camera_id)
+    if sync_to_cvat and not cvat_configured(settings):
+        raise HTTPException(503, "CVAT development mode or credentials are not configured")
+    video = await register_uploaded_video(db=db, upload=file, settings=settings, camera_id=camera_id)
+    if sync_to_cvat:
+        queue_cvat_video(db, video.id)
+        background.add_task(sync_cvat_video, video.id, settings)
+    return video
 
 
 @router.get("", response_model=list[VideoListRead])

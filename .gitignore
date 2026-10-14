@@ -16,6 +16,9 @@ data/outputs/*
 data/product-validation/
 data/live-recording-validation/
 data/models/
+data/training/
+data/external/
+data/cvat-community/
 data/species-reference/
 !data/uploads/.gitkeep
 !data/jobs/.gitkeep

@@ -1,0 +1,11 @@
+# Use with CVAT's official docker-compose.yml. This admits requests from the
+# Aithne containers through host.docker.internal while retaining localhost UI.
+services:
+  cvat_server:
+    labels:
+      traefik.http.routers.cvat.rule: >-
+        (Host(`localhost`) || Host(`host.docker.internal`)) &&
+        (PathPrefix(`/api/`) || PathPrefix(`/static/`) || PathPrefix(`/admin`) || PathPrefix(`/django-rq`))
+  cvat_ui:
+    labels:
+      traefik.http.routers.cvat-ui.rule: Host(`localhost`) || Host(`host.docker.internal`)

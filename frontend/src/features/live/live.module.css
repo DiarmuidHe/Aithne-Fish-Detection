@@ -115,6 +115,149 @@
   text-align: right;
 }
 
+/* --- The camera directory ---------------------------------------------------- */
+
+/*
+ * Seventeen cameras, most of them duty-cycled, so this is a register rather than
+ * a set of cards: one hairline-separated row each, collapsed by default because
+ * the footage below it is what the screen is for.
+ */
+.directory {
+  flex: none;
+  border-bottom: 1px solid var(--chrome-hairline);
+}
+
+.directoryToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-5);
+  background: none;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--chrome-ink-muted);
+}
+
+.directoryToggle:hover {
+  background: var(--chrome-hover);
+}
+
+.directoryToggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.directoryChevron {
+  flex: none;
+  color: var(--chrome-ink-faint);
+  transition: transform 140ms var(--ease-out);
+}
+
+.directoryChevron[data-open] {
+  transform: rotate(90deg);
+}
+
+.directoryCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--chrome-ink-faint);
+}
+
+.cameraList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--chrome-hairline);
+  /* Long enough to scan, short enough that the footage stays on screen. */
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.cameraRow {
+  display: grid;
+  /* The credit is on every row and the detail on few, so the credit gets the
+     wider share; both truncate with the full text on hover. */
+  grid-template-columns: 8px minmax(0, 1.5fr) 5.5rem minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  border-bottom: 1px solid var(--chrome-hairline);
+}
+
+.cameraRow:last-child {
+  border-bottom: 0;
+}
+
+/* Colour repeats the state word beside it; it never carries it alone. */
+.cameraDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chrome-hairline-strong);
+}
+
+.cameraRow[data-state='live'] .cameraDot {
+  background: var(--chrome-status-completed);
+}
+
+.cameraRow[data-state='idle'] .cameraDot {
+  background: var(--chrome-status-flagged);
+}
+
+.cameraRow[data-state='offline'] .cameraDot {
+  background: var(--chrome-status-failed);
+}
+
+.cameraName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--chrome-ink);
+}
+
+.cameraWhere {
+  color: var(--chrome-ink-faint);
+}
+
+.cameraState {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--chrome-ink-faint);
+}
+
+.cameraRow[data-state='live'] .cameraState {
+  color: var(--chrome-status-completed);
+}
+
+.cameraDetail,
+.cameraCredit {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chrome-ink-faint);
+}
+
+.cameraLink {
+  justify-self: end;
+  white-space: nowrap;
+  color: var(--chrome-action);
+}
+
 /* --- Footage and counts ----------------------------------------------------- */
 
 .body {
@@ -418,6 +561,10 @@
   .liveDot {
     animation: none;
   }
+
+  .directoryChevron {
+    transition: none;
+  }
 }
 
 @media (max-width: 1200px) {
@@ -456,13 +603,32 @@
   }
 }
 
+@media (max-width: 900px) {
+  /* Stacked, a row keeps the name and the state together and drops the rest. */
+  .cameraRow {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+
+  .cameraDetail,
+  .cameraCredit {
+    grid-column: 2 / -1;
+  }
+
+  .cameraLink {
+    grid-row: 1;
+  }
+}
+
 @media (max-width: 1000px) {
   .console {
     margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) 0;
   }
 
   .toolbar,
-  .statusLine {
+  .statusLine,
+  .directoryToggle,
+  .cameraRow {
     padding-inline: var(--space-4);
   }
 
