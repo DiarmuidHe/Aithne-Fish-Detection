@@ -1,0 +1,16 @@
+# Packages Ultralytics 8.4's SAM 3 code imports that the project does not ship.
+# Install only with approval, from the repository root (Windows, CPython 3.12):
+#   .venv\Scripts\python.exe -m pip install --no-deps --require-hashes -r scripts\sam3-requirements.txt
+#   .venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation "clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40"
+# The second line is Ultralytics' fork of OpenAI CLIP (AGPL-3.0), pinned by git commit; SAM 3
+# needs its callable SimpleTokenizer and the BPE vocabulary it carries. Hashes are PyPI's.
+timm==1.0.30 \
+    --hash=sha256:c8e27adf6801a2fdfb570dbbdd171f2f084756eefc673df8cfaab06bd14864f3
+safetensors==0.8.0 \
+    --hash=sha256:096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f
+ftfy==6.3.1 \
+    --hash=sha256:7c70eb532015cd2f9adb53f101fb6c7945988d023a085d127d1573dc49dd0083
+wcwidth==0.9.2 \
+    --hash=sha256:2a9746de704242bd4fdaabb31dd46b82f694a56a8d21081ad89b679a89da9fec
+regex==2026.9.29 \
+    --hash=sha256:fdd88ed5e20b1bcdd234421e454962c971aa44b653bdb7f1ea9ef683e90fb649

@@ -36,7 +36,8 @@ Before anything else, confirm the video with a read-only query and record its SH
 
 1. **Zero paid API calls.** Keep Fishial disabled.
 2. **Approved downloads. Download nothing else without asking me:**
-   - **SAM 3 weights.** The download is gated behind Meta's SAM License; I will accept it and place the checkpoint at `data/models/sam3/` myself.
+   - **SAM 3 weights.** The download is gated behind Meta's SAM License; I have accepted it and will place the checkpoint at `data/models/sam3/sam3.pt` myself, with Meta's `LICENSE` beside it.
+     - The expected file comes from `facebook/sam3` at commit `3c879f39826c281e95690f02c7821c4de09afae7`: 3,450,062,241 bytes, SHA256 `9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e`. These values are from the Hugging Face file listing.
      - Never ask for, store or print a Hugging Face token.
      - If the file is missing, stop and tell me the exact page and target path.
      - The checkpoint is a pickle. Record its SHA256, verify it before every load, and load only from that verified path.
