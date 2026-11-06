@@ -20,6 +20,8 @@ Stages (each takes ``--video-id`` or ``--video``; ``run`` does them in order):
 - ``track``: BoT-SORT and ByteTrack over the detections, after static suppression.
 - ``brackishmot``: BoT-SORT replayed over the saved VIAME BrackishMOT detections and scored
   against real labels (Part 4.1; not per video).
+- ``student-data``, ``student-train``, ``student-eval``, ``student``: the RF-DETR Nano
+  student trained on SAM 3's labels (Part 3; see ``scripts/student_detector.py``).
 
 Everything generated goes under ``data/outputs/sam3-botsort-<UTC date>/``. ``journal.json``
 there records each step's inputs, settings, hashes, timings and status; a completed step
@@ -1270,7 +1272,8 @@ def main() -> None:
     os.environ.update(OFFLINE)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("stage", choices=["facts", "viame", "static", "compare", "render", "track", "brackishmot",
-                                          "sam3-probe", "sam3", "variants", "labels", "run"])
+                                          "sam3-probe", "sam3", "variants", "labels", "run",
+                                          "student-data", "student-train", "student-eval", "student"])
     parser.add_argument("--video-id", help="Upload's video UUID (read-only database lookup)")
     parser.add_argument("--video", help="A video path (with --video-id: skip the lookup while Docker is down)")
     parser.add_argument("--root", type=Path, help="Experiment folder (default: the one already holding this "
@@ -1287,6 +1290,9 @@ def main() -> None:
     if args.stage in ("sam3-probe", "sam3", "variants", "labels", "run"):
         from scripts import sam3_stages
         stages |= sam3_stages.STAGES
+    if args.stage.startswith("student"):
+        from scripts import student_detector
+        stages |= student_detector.STAGES
     print(json.dumps(stages[args.stage](args), indent=2, default=str))
 
 

@@ -11,6 +11,8 @@ CSV output, stores tracks and detections in PostgreSQL, and exposes JSON results
 
 For the local, human-reviewed VIAME-to-custom-model workflow, see [Custom fish model](docs/custom-fish-model.md).
 For the optional local CVAT upload and review integration, see [CVAT development review](docs/cvat-development.md).
+To resume the SmartBay archive screening job on an EC2 A10G without using the laptop GPU,
+see [EC2 SmartBay archive scan](docs/ec2-smartbay-archive-scan.md).
 
 ```text
 underwater video
@@ -1341,3 +1343,8 @@ an in-flight detector exits (bounded by its timeout).
 # Optional external datasets and offline detector
 
 See [Brackish, BrackishMOT, Fishial, and OpenAqua guide](docs/external-fish-datasets.md) for sequence-safe imports, offline candidate inference, and separate CVAT suggestions.
+
+# Galway species classification image dataset
+
+The standalone FathomNet and iNaturalist downloader, licence checks, review sheet,
+and PyTorch training manifest are documented in [docs/galway_fish_dataset.md](docs/galway_fish_dataset.md).

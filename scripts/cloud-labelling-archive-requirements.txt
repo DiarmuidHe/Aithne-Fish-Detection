@@ -1,0 +1,21 @@
+# EC2 archive-screening additions for the AWS Deep Learning PyTorch AMI used on 2026-10-29.
+# The AMI supplies Python 3.13, torch 2.10.0+cu130, torchvision 0.25.0+cu130, numpy,
+# Pillow and psutil. bootstrap_archive_scan.sh installs these exact additions into a
+# project-local --target directory with --no-deps so pip cannot replace the AMI's matched
+# CUDA stack.
+opencv-python-headless==5.0.0.93 \
+    --hash=sha256:ed709fdf9aa0bd1f2ed8549e71d19449b03a675bb581eb292285f6861953be37
+ultralytics==8.4.175 \
+    --hash=sha256:16245f680cb6c27856398b3d78a4f4e43d583d0f0c65de0b22431526881b1e1d
+timm==1.0.30 \
+    --hash=sha256:c8e27adf6801a2fdfb570dbbdd171f2f084756eefc673df8cfaab06bd14864f3
+safetensors==0.8.0 \
+    --hash=sha256:fd6f3f93c9a0a7cc2788ee63fb763353d4bd2e89b0751bc78fcf7dda00bea774
+ftfy==6.3.1 \
+    --hash=sha256:7c70eb532015cd2f9adb53f101fb6c7945988d023a085d127d1573dc49dd0083
+regex==2026.9.29 \
+    --hash=sha256:d49c18f1ea294cf4adde2e5ac256e98c82ea9d708462ce4bf799dffa7cfe8a2c
+wcwidth==0.9.2 \
+    --hash=sha256:751bef0ab404b6a1dc028b56b4b85d46486be1c55833f80da533e42dc691f389
+clip @ https://github.com/ultralytics/CLIP/archive/7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40.zip \
+    --hash=sha256:ea6799c740f2725175edee0881de9f354086e801dd33d4f43b17d18c8238fb54

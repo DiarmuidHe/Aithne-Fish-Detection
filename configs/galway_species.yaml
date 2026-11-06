@@ -1,0 +1,31 @@
+# Targets for Irish coastal/Northeast Atlantic research. No entry here asserts
+# that the species has been recorded at the SmartBay camera site.
+# Review local camera footage and occurrence records before treating any taxon
+# as a likely SmartBay class. Exact binomials are required by the downloader.
+species:
+  - {scientific_name: Gadus morhua, common_name: Atlantic cod, enabled: true}
+  - {scientific_name: Pollachius pollachius, common_name: Pollack, enabled: true}
+  - {scientific_name: Pollachius virens, common_name: Saithe, enabled: true}
+  - {scientific_name: Merlangius merlangus, common_name: Whiting, enabled: true}
+  - {scientific_name: Melanogrammus aeglefinus, common_name: Haddock, enabled: true}
+  - {scientific_name: Trisopterus minutus, common_name: Poor cod, enabled: true}
+  - {scientific_name: Trisopterus luscus, common_name: Pouting, enabled: true}
+  - {scientific_name: Clupea harengus, common_name: Atlantic herring, enabled: true}
+  - {scientific_name: Scomber scombrus, common_name: Atlantic mackerel, enabled: true}
+  - {scientific_name: Trachurus trachurus, common_name: Horse mackerel, enabled: true}
+  - {scientific_name: Labrus bergylta, common_name: Ballan wrasse, enabled: true}
+  - {scientific_name: Ctenolabrus rupestris, common_name: Goldsinny wrasse, enabled: true}
+  - {scientific_name: Symphodus melops, common_name: Corkwing wrasse, enabled: true}
+  - {scientific_name: Labrus mixtus, common_name: Cuckoo wrasse, enabled: true}
+  - {scientific_name: Zeus faber, common_name: John Dory, enabled: true}
+  - {scientific_name: Chelidonichthys lucerna, common_name: Tub gurnard, enabled: true}
+  - {scientific_name: Conger conger, common_name: Conger eel, enabled: true}
+  # Additional Irish coastal candidates for manual occurrence review.
+  - {scientific_name: Centrolabrus exoletus, common_name: Rock cook, enabled: true}
+  - {scientific_name: Gobius paganellus, common_name: Rock goby, enabled: true}
+  - {scientific_name: Pomatoschistus minutus, common_name: Sand goby, enabled: true}
+  - {scientific_name: Lipophrys pholis, common_name: Shanny, enabled: true}
+  - {scientific_name: Pholis gunnellus, common_name: Butterfish, enabled: true}
+  - {scientific_name: Pleuronectes platessa, common_name: European plaice, enabled: true}
+  - {scientific_name: Limanda limanda, common_name: Common dab, enabled: true}
+  - {scientific_name: Platichthys flesus, common_name: European flounder, enabled: true}

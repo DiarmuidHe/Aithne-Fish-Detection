@@ -1,0 +1,3 @@
+# Standalone Galway species image downloader dependencies.
+# The main FastAPI application continues to use pyproject.toml.
+-r requirements-galway-dataset.txt

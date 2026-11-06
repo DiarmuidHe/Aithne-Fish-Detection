@@ -32,7 +32,7 @@ The full archive's published annotations set `reviewed: true` **for the Brackish
 .venv\Scripts\python.exe scripts/fish_model.py evaluate MODEL.pt data/training/brackish-fish-v4-dark-test data/outputs/dark-test-eval --save-predictions --workers 2
 ```
 
-Results of the A/B comparison are in [murky-water-results.md](murky-water-results.md). Ultralytics code and weights are AGPL-3.0.
+Ultralytics code and weights are AGPL-3.0.
 
 The authors also [describe AAU and COCO annotations](https://vap.aau.dk/the-brackish-dataset/). If you already have an **extracted, normalized five-column YOLO frame export**, use the manifest importer below. **Create a six-entry JSON class map from that exact export's class list.** The example [Roboflow class map](brackish-roboflow-class-map.json) is for its `0 crab, 1 fish, 2 jellyfish, 3 shrimp, 4 small_fish, 5 starfish` ordering. It does not apply to the official archive.
 
@@ -79,7 +79,7 @@ In total, 87 of the 89 archive recordings appear in BrackishMOT: **BrackishMOT w
 .venv\Scripts\python.exe scripts/external_fish.py brackish-mot-overlap data/external/brackish-v4.zip data/external/brackishmot data/training/brackishmot-v1 data/outputs/brackishmot-overlap.json
 ```
 
-`scripts/murky_water_tracker.py` replays VIAME's own ByteTrack over saved detections to sweep tracker settings on BrackishMOT; see [murky-water-results.md](murky-water-results.md).
+`scripts/murky_water_tracker.py` replays VIAME's own ByteTrack over saved detections to sweep tracker settings on BrackishMOT.
 
 ## 3. Fishial offline detector and CVAT suggestions
 

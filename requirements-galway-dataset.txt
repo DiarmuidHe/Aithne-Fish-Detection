@@ -1,0 +1,5 @@
+fathomnet>=1.10,<2
+Pillow>=11,<13
+PyYAML>=6,<7
+requests>=2.32,<3
+urllib3>=2,<3
