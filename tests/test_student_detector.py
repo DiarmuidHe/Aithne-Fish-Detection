@@ -92,9 +92,30 @@ def test_rfdetr_checkpoint_is_refused_before_any_load(tmp_path, monkeypatch):
     fake.write_bytes(b"not a checkpoint")
     with pytest.raises(UnverifiedCheckpoint, match="bytes"):
         verify_rfdetr(fake)
-    monkeypatch.setattr(student_detector, "RFDETR_BYTES", fake.stat().st_size)
+    monkeypatch.setitem(student_detector.VARIANTS["nano"], "bytes", fake.stat().st_size)
     with pytest.raises(UnverifiedCheckpoint, match="pinned"):
         verify_rfdetr(fake)
+
+
+def test_a_bigger_size_is_checked_by_rfdetrs_md5_and_records_its_sha256(tmp_path, monkeypatch):
+    fake = tmp_path / "rf-detr-medium.pth"
+    fake.write_bytes(b"medium weights")
+    with pytest.raises(UnverifiedCheckpoint, match="pinned"):
+        verify_rfdetr(fake, "medium")
+    import hashlib
+
+    monkeypatch.setitem(student_detector.VARIANTS["medium"], "md5", hashlib.md5(b"medium weights").hexdigest())
+    checked = verify_rfdetr(fake, "medium")
+    assert checked["variant"] == "medium" and not checked["sha256_pinned"]
+    assert checked["sha256"] == hashlib.sha256(b"medium weights").hexdigest()
+    with pytest.raises(UnverifiedCheckpoint, match="medium_coco"):
+        verify_rfdetr(tmp_path / "missing.pth", "medium")
+
+
+def test_every_size_fits_its_backbones_patch_grid():
+    for variant, spec in student_detector.VARIANTS.items():
+        grid = 56 if spec["backbone"].endswith("ViT-B") else 32
+        assert spec["resolution"] % grid == 0, variant
 
 
 def test_changed_student_is_refused(tmp_path):

@@ -91,6 +91,29 @@ RFDETR_MD5 = "fb6504cce7fbdc783f7a46991f07639f"  # rfdetr 1.11.2's own registry 
 RFDETR_SHA256 = "d8d6b9ee57d4d0ed2b1f305163624712a0532cb7bce0c747317984fc5457440d"
 RFDETR_BYTES = 366_287_238
 RFDETR_LICENCE = "Apache-2.0 (rfdetr 1.11.2; RF-DETR Nano and its COCO weights)"
+# The RF-DETR sizes a student can be. Nano, Small and Medium share one backbone, DINOv2 ViT-S
+# (windowed): they differ in decoder layers and in how Roboflow trained them on COCO.
+# "large-vitb" is RF-DETR's first Large, deprecated in rfdetr 1.7 but still in 1.11.2, and the
+# only Apache-2.0 size with a bigger backbone, DINOv2 ViT-B. Every MD5 is rfdetr 1.11.2's own
+# registry value. Only Nano's size and SHA256 are pinned: the others are recorded by the run
+# that fetches them. A resolution must divide by patch size x windows (32, or 56 for ViT-B).
+VARIANTS = {
+    "nano": {"class": "RFDETRNano", "file": "rf-detr-nano.pth", "url": RFDETR_URL, "md5": RFDETR_MD5,
+             "sha256": RFDETR_SHA256, "bytes": RFDETR_BYTES, "resolution": 640, "backbone": "DINOv2 ViT-S",
+             "decoder_layers": 2},
+    "small": {"class": "RFDETRSmall", "file": "rf-detr-small.pth",
+              "url": "https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth",
+              "md5": "fb37061c1af7bace359c91b723a8d5c1", "sha256": None, "bytes": None, "resolution": 640,
+              "backbone": "DINOv2 ViT-S", "decoder_layers": 3},
+    "medium": {"class": "RFDETRMedium", "file": "rf-detr-medium.pth",
+               "url": "https://storage.googleapis.com/rfdetr/medium_coco/checkpoint_best_regular.pth",
+               "md5": "7223f764a87b863f02eb8d52bf0ce2ee", "sha256": None, "bytes": None, "resolution": 640,
+               "backbone": "DINOv2 ViT-S", "decoder_layers": 4},
+    "large-vitb": {"class": "RFDETRLargeDeprecated", "file": "rf-detr-large.pth",
+                   "url": "https://storage.googleapis.com/rfdetr/rf-detr-large.pth",
+                   "md5": "992c8e862aa733a7bb2777e45d49f1a0", "sha256": None, "bytes": None, "resolution": 672,
+                   "backbone": "DINOv2 ViT-B", "decoder_layers": 3},
+}
 NAME = "rfdetr-nano"  # Per-video outputs land in student/<NAME>/, read as "student-<NAME>"
 LABELS = "fish"  # The recorded SAM 3 prompt choice (decision sam3_prompt_choice)
 SPLIT = {"train": .75, "test": .20, "gap_seconds": 5.0, "validation": .10}
@@ -113,25 +136,37 @@ LIVE = {"fps": 4.0, "frame_budget_ms": 250.0}
 
 # ------------------------------------------------------------- checkpoint --
 
-def verify_rfdetr(path: Path = RFDETR_CHECKPOINT) -> dict:
-    """Size, RF-DETR's published MD5 and the pinned SHA256 of the file that will load."""
-    path = Path(path).resolve()
+def variant_checkpoint(variant: str) -> Path:
+    """Where a size's COCO checkpoint is kept, beside Nano's."""
+    return RFDETR_CHECKPOINT.with_name(VARIANTS[variant]["file"])
+
+
+def variant_licence(variant: str) -> str:
+    return f"Apache-2.0 (rfdetr 1.11.2; RF-DETR {variant} and its COCO weights)"
+
+
+def verify_rfdetr(path: Path | None = None, variant: str = "nano") -> dict:
+    """A size's COCO checkpoint before any load: RF-DETR's published MD5, and for Nano also the
+    pinned size and SHA256. The SHA256 is always returned, so a run records what it loaded."""
+    spec = VARIANTS[variant]
+    path = Path(path or variant_checkpoint(variant)).resolve()
     if not path.is_file():
-        raise UnverifiedCheckpoint(f"RF-DETR Nano checkpoint not found at {path}; download {RFDETR_URL} "
-                                   f"({RFDETR_BYTES:,} bytes, MD5 {RFDETR_MD5}) to {RFDETR_CHECKPOINT.as_posix()}")
+        raise UnverifiedCheckpoint(f"RF-DETR {variant} checkpoint not found at {path}; download {spec['url']} "
+                                   f"(MD5 {spec['md5']}) to {variant_checkpoint(variant).as_posix()}")
     size = path.stat().st_size
-    if size != RFDETR_BYTES:
-        raise UnverifiedCheckpoint(f"{path} is {size:,} bytes, expected {RFDETR_BYTES:,}; refusing to load")
+    if spec["bytes"] is not None and size != spec["bytes"]:
+        raise UnverifiedCheckpoint(f"{path} is {size:,} bytes, expected {spec['bytes']:,}; refusing to load")
     md5 = hashlib.md5()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1 << 20), b""):
             md5.update(block)
     digest = sha256(path)
-    if md5.hexdigest() != RFDETR_MD5 or digest != RFDETR_SHA256:
+    if md5.hexdigest() != spec["md5"] or (spec["sha256"] is not None and digest != spec["sha256"]):
         raise UnverifiedCheckpoint(f"{path} MD5 {md5.hexdigest()} / SHA256 {digest} are not the pinned values; "
                                    "refusing to load")
-    return {"path": str(path), "bytes": size, "md5": RFDETR_MD5, "sha256": digest, "url": RFDETR_URL,
-            "licence": RFDETR_LICENCE}
+    return {"path": str(path), "bytes": size, "md5": spec["md5"], "sha256": digest, "url": spec["url"],
+            "variant": variant, "sha256_pinned": spec["sha256"] is not None,
+            "licence": RFDETR_LICENCE if variant == "nano" else variant_licence(variant)}
 
 
 # ------------------------------------------------------------------- data --
@@ -222,13 +257,17 @@ def size_epochs(probe_seconds: float, remaining: float, *, margin: float = MARGI
     return epochs
 
 
-def _train(dataset: Path, output: Path, epochs: int, max_seconds: float, heartbeat) -> dict:
-    """RF-DETR Nano's own training loop with two additions on its Lightning trainer: a
-    ``max_time`` stop and a callback that beats the journal after every epoch."""
+def _train(dataset: Path, output: Path, epochs: int, max_seconds: float, heartbeat, *, variant: str = "nano",
+           train_settings: dict | None = None, model_settings: dict | None = None) -> dict:
+    """RF-DETR's own training loop (Nano unless ``variant`` says otherwise) with two additions on
+    its Lightning trainer: a ``max_time`` stop and a callback that beats the journal after every
+    epoch. ``train_settings`` override ``TRAIN`` (``lr_encoder``, say); ``model_settings`` go to
+    the model (``freeze_encoder``)."""
     from datetime import timedelta
 
+    import rfdetr
     from pytorch_lightning import Callback
-    from rfdetr import RFDETRNano, training
+    from rfdetr import training
 
     seen = {"epochs": 0, "metrics": {}}
 
@@ -253,9 +292,13 @@ def _train(dataset: Path, output: Path, epochs: int, max_seconds: float, heartbe
     training.build_trainer = build
     started = time.monotonic()
     try:
-        model = RFDETRNano(pretrain_weights=str(Path(verify_rfdetr()["path"])), resolution=RESOLUTION)
-        model.train(dataset_dir=str(dataset), output_dir=str(output), epochs=epochs, resolution=RESOLUTION,
-                    lr_scheduler="step", lr_scheduler_kwargs={"lr_drop": max(1, round(.8 * epochs))}, **TRAIN)
+        resolution = VARIANTS[variant]["resolution"]
+        model = getattr(rfdetr, VARIANTS[variant]["class"])(
+            pretrain_weights=str(Path(verify_rfdetr(variant=variant)["path"])), resolution=resolution,
+            **(model_settings or {}))
+        model.train(dataset_dir=str(dataset), output_dir=str(output), epochs=epochs, resolution=resolution,
+                    lr_scheduler="step", lr_scheduler_kwargs={"lr_drop": max(1, round(.8 * epochs))},
+                    **TRAIN | (train_settings or {}))
     finally:
         training.build_trainer = original
     best = output / "checkpoint_best_total.pth"
@@ -338,7 +381,7 @@ def detect_video(model, video: Path, *, floor: float = FLOOR, heartbeat=None) ->
     finally:
         capture.release()
     total = [a + b for a, b in zip(decode, infer)]
-    speed = {"frame_size": size, "input_resolution": RESOLUTION,
+    speed = {"frame_size": size, "input_resolution": getattr(getattr(model, "model_config", None), "resolution", RESOLUTION),
              "gpu": torch.cuda.get_device_name(0), "gpu_peak_mb": torch.cuda.max_memory_allocated() / 2**20,
              "warmup_frames_excluded": WARMUP_FRAMES, "decode_ms": percentiles(decode),
              "model_ms": percentiles(infer), "total_ms": percentiles(total),
@@ -379,13 +422,14 @@ def student_tracker(journal: Journal, threshold: float, fps: float):
 
 
 def load_student(checkpoint: dict):
-    """The trained student, after its file matches the SHA256 recorded when it was trained."""
+    """The trained student, after its file matches the SHA256 recorded when it was trained. Its
+    size is the checkpoint record's ``variant``: records from before sizes existed are Nano."""
     path = Path(checkpoint["path"])
     if not path.is_file() or sha256(path) != checkpoint["sha256"]:
         raise UnverifiedCheckpoint(f"{path} is missing or changed since training; refusing to load")
-    from rfdetr import RFDETRNano
+    import rfdetr
 
-    return RFDETRNano.from_checkpoint(str(path))
+    return getattr(rfdetr, VARIANTS[checkpoint.get("variant", "nano")]["class"]).from_checkpoint(str(path))
 
 
 def in_segment(rows: list[dict], segment) -> list[dict]:
@@ -718,7 +762,7 @@ def round_eval(root: Path = ROUND_ROOT, labels_root: Path | None = None) -> dict
     loaded = {}
 
     def infer(window: dict) -> list[dict]:
-        target = root / "student" / NAME / window["window_id"] / "frames.jsonl"
+        target = root / "student" / model.get("name", NAME) / window["window_id"] / "frames.jsonl"
 
         def step(heartbeat):
             if "model" not in loaded:
@@ -923,13 +967,20 @@ def local_eval(root: Path, videos: list[Path], render: str | None = None) -> dic
         if render:
             result["render"] = render_local(Path(facts["file"]["path"]), frames, labels if render == "compare" else None,
                                             fps, threshold, target / LOCAL_RENDERS[render],
-                                            title=f"{model.get('name', NAME)} ({model['trained_on']})")
+                                            title=f"{model.get('arm', model.get('name', NAME))} ({model['trained_on']})")
         results[key] = result
+    # Videos scored earlier by this same student and threshold stay in the summary
+    path = root / LOCAL_DIR / "local_eval.json"
+    earlier = read(path) if path.exists() else {}
+    kept = (earlier.get("videos", {}) if earlier.get("checkpoint", {}).get("sha256") == checkpoint["sha256"]
+            and earlier.get("threshold") == threshold else {})
     summary = {"note": "Agreement with SAM 3's unreviewed labels, never precision, recall or accuracy.",
                "root": root.as_posix(), "checkpoint": checkpoint, "trained_on": model["trained_on"],
-               "threshold": threshold, "videos": results, "licences": [RFDETR_LICENCE, SAM3_LICENCE]}
+               "threshold": threshold, "videos": kept | results,
+               "licences": [RFDETR_LICENCE if model.get("variant", "nano") == "nano"
+                            else variant_licence(model["variant"]), SAM3_LICENCE]}
     (root / LOCAL_DIR).mkdir(parents=True, exist_ok=True)
-    save(root / LOCAL_DIR / "local_eval.json", summary)
+    save(path, summary)
     return summary
 
 

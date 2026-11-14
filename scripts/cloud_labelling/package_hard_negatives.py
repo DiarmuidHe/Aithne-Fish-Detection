@@ -42,11 +42,11 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def contents(repo: Path, round_dir: Path) -> dict[str, Path]:
-    """Name inside the bundle to its file here. Refuses a missing file, a shell script with
-    Windows line endings, which won't run on the instance, and a student that isn't the one the
-    round's journal recorded."""
-    wanted = {name: repo / name for name in (*CODE, *MODELS)}
+def contents(repo: Path, round_dir: Path, extra: tuple[str, ...] = ()) -> dict[str, Path]:
+    """Name inside the bundle to its file here, plus ``extra`` repository files. Refuses a missing
+    file, a shell script with Windows line endings, which won't run on the instance, and a student
+    that isn't the one the round's journal recorded."""
+    wanted = {name: repo / name for name in (*CODE, *MODELS, *extra)}
     for folder in CODE_FOLDERS:
         wanted |= {p.relative_to(repo).as_posix(): p for p in sorted((repo / folder).rglob("*"))
                    if p.suffix in CODE_SUFFIXES and "__pycache__" not in p.parts}
@@ -70,9 +70,9 @@ def contents(repo: Path, round_dir: Path) -> dict[str, Path]:
     return wanted
 
 
-def build(repo: Path, round_dir: Path, output: Path) -> dict:
+def build(repo: Path, round_dir: Path, output: Path, extra: tuple[str, ...] = ()) -> dict:
     """Write the bundle through a temporary name, so a stopped run leaves no file to upload by mistake."""
-    files = contents(repo, round_dir)
+    files = contents(repo, round_dir, extra)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(output.name + ".tmp")
     sums = []

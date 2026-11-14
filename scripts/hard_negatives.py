@@ -331,7 +331,11 @@ def restored_windows(root: Path, out: Path) -> dict:
 
 def sam3_rows(root: Path, window_id: str) -> tuple[list[dict], list[dict], list[dict]]:
     """SAM 3's labels, its raw boxes before any filter and those its static filter removed."""
-    directory = root / "videos" / window_id
+    return sam3_rows_in(root / "videos" / window_id)
+
+
+def sam3_rows_in(directory: Path) -> tuple[list[dict], list[dict], list[dict]]:
+    """``sam3_rows`` for one SAM 3 output folder, wherever it is."""
     raw = directory / "sam3" / LABELS / "frames.jsonl"
     removed = directory / "static" / f"sam3-{LABELS}" / "removed.jsonl"
     return (read_rows(directory / "labels" / LABELS / "rows.jsonl"),
