@@ -1,14 +1,14 @@
 # EC2 labelling and training additions for the AWS Deep Learning PyTorch AMI (Python 3.13,
-# torch 2.10.0+cu130), for Parts 3-7 of docs/smartbay-rolling-training-prompt.md.
+# torch 2.10.0+cu130), for Parts 3-7 of the SmartBay rolling-training pipeline.
 # bootstrap_labelling.sh installs them into a project-local --target directory with
 # --no-deps --require-hashes, so pip can never replace the AMI's torch or CUDA.
-# Same versions as the repo's two locks, which the user approved:
+# Same versions as the repo's two locks:
 # - scripts/cloud-labelling-archive-requirements.txt (SAM 3 screening), copied verbatim;
-# - lap 0.5.13, for Ultralytics' BoT-SORT (named in the rolling-training prompt; the laptop's version);
+# - lap 0.5.13, for Ultralytics' BoT-SORT (the laptop's version);
 # - scripts/student-requirements.txt (RF-DETR 1.11.2 and its train extra), with PyPI's Linux
 #   CPython 3.13 x86_64 hashes in place of the laptop's Windows CPython 3.12 ones;
 # - huggingface-hub, httpx2, httpcore2 and truststore, which transformers imports at start-up
-#   and the AMI lacks (approved by the user on 2026-10-30; the laptop's versions; the stages
+#   and the AMI lacks (added 2026-10-30; the laptop's versions; the stages
 #   run offline, so nothing is fetched from the Hugging Face Hub).
 # Licences: AGPL-3.0 (ultralytics), Apache-2.0, MIT, BSD, PSF and ISC; see the two source locks.
 # --- from cloud-labelling-archive-requirements.txt

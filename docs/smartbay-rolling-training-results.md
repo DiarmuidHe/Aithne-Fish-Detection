@@ -1,6 +1,7 @@
 # SmartBay rolling training: results
 
-The task is `docs/smartbay-rolling-training-prompt.md`.
+The pipeline runs in seven parts: 1 window selection, 2 instance setup, 3 SAM 3 speed probe,
+4 labelling, 5 automatic checks, 6 dataset build, 7 student training and evaluation.
 
 **These labels are SAM 3 pseudo-labels, never ground truth.** No one reviewed them. Every number
 below is *agreement with SAM 3*, never precision, recall or accuracy. Expert days were never

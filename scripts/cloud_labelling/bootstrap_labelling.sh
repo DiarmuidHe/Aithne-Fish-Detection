@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Prepare or inspect SAM 3 labelling and RF-DETR training on an AWS Deep Learning PyTorch AMI
-# (docs/smartbay-rolling-training-prompt.md, Part 2). --check installs and writes nothing.
+# (Part 2 of the SmartBay rolling-training pipeline). --check installs and writes nothing.
 #   scripts/cloud_labelling/bootstrap_labelling.sh [install|--check] [cut-window.mp4]
 # Given a cut window, it ends with a 30-frame SAM 3 smoke run on it (results printed only).
+# AITHNE_NO_SAM3=1 skips the SAM 3 checkpoint, for work that only reads SAM 3's finished output
+# such as scripts/hard_negatives.py.
 set -euo pipefail
 
 MODE="${1:-install}"
@@ -61,7 +63,7 @@ import sys
 needed = ("torch", "torchvision", "cv2", "numpy", "psutil", "lap", "clip", "timm", "ultralytics.models.sam",
           "ultralytics.models.sam.predict", "ultralytics.trackers.bot_sort", "ultralytics.trackers.utils.gmc",
           "rfdetr", "pytorch_lightning", "app.services.box_tracking", "app.services.static_filter",
-          "scripts.sam3_stages", "scripts.student_detector")
+          "scripts.sam3_stages", "scripts.student_detector", "scripts.hard_negatives")
 failed = {}
 for name in needed:
     try:
@@ -88,20 +90,24 @@ if not torch.cuda.is_available():
     raise SystemExit("CUDA is not available")
 PY
 
-if [[ ! -f "$MODEL" ]]; then
-  echo "missing SAM 3 checkpoint: $MODEL" >&2
-  exit 1
-fi
 [[ -f "$(dirname "$MODEL")/LICENSE" ]] || { echo "missing Meta's LICENSE beside $MODEL" >&2; exit 1; }
-ACTUAL_BYTES="$(stat -c %s "$MODEL")"
-[[ "$ACTUAL_BYTES" == "$EXPECTED_MODEL_BYTES" ]] || {
-  echo "checkpoint size $ACTUAL_BYTES != $EXPECTED_MODEL_BYTES" >&2; exit 1;
-}
-ACTUAL_SHA="$(sha256sum "$MODEL" | cut -d' ' -f1)"
-[[ "$ACTUAL_SHA" == "$EXPECTED_MODEL_SHA" ]] || {
-  echo "checkpoint SHA256 $ACTUAL_SHA != $EXPECTED_MODEL_SHA" >&2; exit 1;
-}
-echo "SAM 3 checkpoint verified: $ACTUAL_SHA"
+if [[ -n "${AITHNE_NO_SAM3:-}" ]]; then
+  echo "SAM 3 checkpoint not needed (AITHNE_NO_SAM3)."
+else
+  if [[ ! -f "$MODEL" ]]; then
+    echo "missing SAM 3 checkpoint: $MODEL" >&2
+    exit 1
+  fi
+  ACTUAL_BYTES="$(stat -c %s "$MODEL")"
+  [[ "$ACTUAL_BYTES" == "$EXPECTED_MODEL_BYTES" ]] || {
+    echo "checkpoint size $ACTUAL_BYTES != $EXPECTED_MODEL_BYTES" >&2; exit 1;
+  }
+  ACTUAL_SHA="$(sha256sum "$MODEL" | cut -d' ' -f1)"
+  [[ "$ACTUAL_SHA" == "$EXPECTED_MODEL_SHA" ]] || {
+    echo "checkpoint SHA256 $ACTUAL_SHA != $EXPECTED_MODEL_SHA" >&2; exit 1;
+  }
+  echo "SAM 3 checkpoint verified: $ACTUAL_SHA"
+fi
 "$BASE_PYTHON" -c "import json; from scripts.student_detector import verify_rfdetr; print(json.dumps(verify_rfdetr()))"
 echo "RF-DETR Nano checkpoint verified."
 

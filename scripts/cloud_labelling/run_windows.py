@@ -1,4 +1,4 @@
-"""Part 4 of ``docs/smartbay-rolling-training-prompt.md``: label a round's windows with
+"""Part 4 of the SmartBay rolling-training pipeline: label a round's windows with
 SAM 3 on the EC2 labelling instance, resumably. ``run_labelling.sh`` starts the workers.
 
 On the instance, from the repository root (after ``bootstrap_labelling.sh``):

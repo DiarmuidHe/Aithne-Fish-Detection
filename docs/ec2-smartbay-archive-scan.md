@@ -7,7 +7,7 @@ was 2025-08-19; one PNG had timed out.
 
 ## Measured EC2 probe — 2026-10-29
 
-The deployment and bounded probe completed on the user's `g5.xlarge` at
+The deployment and bounded probe completed on a `g5.xlarge` at
 `108.130.125.132`:
 
 - AMI Python 3.13.16, PyTorch 2.10.0+cu130, torchvision 0.25.0+cu130;

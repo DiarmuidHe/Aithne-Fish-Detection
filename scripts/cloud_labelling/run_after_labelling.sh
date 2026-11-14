@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Parts 5-7 of docs/smartbay-rolling-training-prompt.md, unattended (approved 2026-10-30): wait
+# Parts 5-7 of the SmartBay rolling-training pipeline, unattended: wait
 # for the labelling tmux session to end, extend the shutdown guard, run the automatic checks,
 # build the day-split dataset, train and evaluate the student, then re-arm the guard for 30
 # minutes. Any failure stops the chain and also re-arms the guard. Use inside tmux.

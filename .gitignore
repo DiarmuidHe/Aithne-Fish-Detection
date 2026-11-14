@@ -20,19 +20,6 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
-.claude/
-.cursor/
-.codex/
-.aider*
-CLAUDE.md
-AGENTS.md
-docs/*-prompt*.md
-docs/techireland-gamma-deck-addendum.md
-docs/current-smartbay-audit-*.md
-docs/murky-water-results.md
-docs/sam3-botsort-results.md
-docs/smartbay-cloud-labelling-results.md
-
 data/*
 !data/uploads/
 !data/jobs/

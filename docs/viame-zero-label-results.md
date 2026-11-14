@@ -58,7 +58,7 @@ The fusion graph adds the locally installed motion RF-DETR weights at 960×1728.
 It retains the current application confidence/buffer overrides so the conceptual
 change is the detector graph. It is partly correlated with the DEIM baseline.
 
-Observed numeric settings match the prompt: detector .10, tracker high/low/new
+Observed numeric settings match the planned ones: detector .10, tracker high/low/new
 .45/.10/.50, buffer 30 and association-distance gates .98. The installed code
 accepts matches when `1 − IoU <= gate`; lowering a gate is stricter. Its internal
 frame counter increments on each processed frame, and expired tracks are removed

@@ -25,7 +25,7 @@ never precision or recall, and nothing here decides whether VIAME stays. The stu
 derived from SAM 3's labels, so Meta's SAM License ships with it; RF-DETR (code and Nano
 COCO weights) is Apache-2.0; BoT-SORT is Ultralytics (AGPL-3.0).
 
-Rounds (Parts 6 and 7 of ``docs/smartbay-rolling-training-prompt.md``) train one student
+Rounds (Parts 6 and 7 of the SmartBay rolling-training pipeline) train one student
 over a labelling round's windows, split by day role, on the instance:
 
     /opt/pytorch/bin/python -m scripts.student_detector round --root data/outputs/smartbay-rounds/round-1
@@ -553,35 +553,60 @@ def round_windows(root: Path) -> list[dict]:
     return windows
 
 
+def add_coco_image(data: dict, window: dict, frame: int, rows: list[dict], **extra) -> None:
+    """One frame of a window as a COCO image carrying its window, its frame there and its
+    source frame (a frame without a label is a negative); boxes clipped to the frame, ones
+    under 2 px dropped."""
+    image_id, width, height = len(data["images"]) + 1, window["width"], window["height"]
+    data["images"].append({"id": image_id, "file_name": f"{window['window_id']}_{frame:03d}.jpg",
+                           "width": width, "height": height, "window_id": window["window_id"], "frame": frame,
+                           "source_frame": window["start_frame"] + frame, "day": window["day"],
+                           "evidence": window["evidence"], "round": window["round"]} | extra)
+    for row in rows:
+        x1, y1 = max(0.0, row["box"][0]), max(0.0, row["box"][1])
+        x2, y2 = min(float(width), row["box"][2]), min(float(height), row["box"][3])
+        if x2 - x1 < 2 or y2 - y1 < 2:
+            continue
+        data["annotations"].append({"id": len(data["annotations"]) + 1, "image_id": image_id,
+                                    "category_id": 1, "iscrowd": 0,
+                                    "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
+                                    "area": round((x2 - x1) * (y2 - y1), 2)})
+
+
 def round_coco(windows: list[dict], labels: dict[str, list[dict]], validation: set[str],
                stride: int = ROUND_STRIDE) -> dict[str, dict]:
     """A COCO dict per split over the kept windows: every ``stride``-th frame of a window is
-    an image carrying its window, its frame there and its source frame (frames without a
-    label are negatives); boxes clipped to the frame, ones under 2 px dropped."""
+    an image (``add_coco_image``)."""
     result = {name: {"images": [], "annotations": [], "categories": [{"id": 1, "name": "fish", "supercategory": "none"}]}
               for name in SPLIT_DIRS}
     for window in windows:
         split = None if window["excluded"] else split_of(window["role"], window["day"], validation)
         if split is None:
             continue
-        data, width, height = result[split], window["width"], window["height"]
         grouped = by_frame(labels.get(window["window_id"], []))
         for frame in range(0, window["frames"], stride):
-            image_id = len(data["images"]) + 1
-            data["images"].append({"id": image_id, "file_name": f"{window['window_id']}_{frame:03d}.jpg",
-                                   "width": width, "height": height, "window_id": window["window_id"], "frame": frame,
-                                   "source_frame": window["start_frame"] + frame, "day": window["day"],
-                                   "evidence": window["evidence"], "round": window["round"]})
-            for row in grouped.get(frame, []):
-                x1, y1 = max(0.0, row["box"][0]), max(0.0, row["box"][1])
-                x2, y2 = min(float(width), row["box"][2]), min(float(height), row["box"][3])
-                if x2 - x1 < 2 or y2 - y1 < 2:
-                    continue
-                data["annotations"].append({"id": len(data["annotations"]) + 1, "image_id": image_id,
-                                            "category_id": 1, "iscrowd": 0,
-                                            "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
-                                            "area": round((x2 - x1) * (y2 - y1), 2)})
+            add_coco_image(result[split], window, frame, grouped.get(frame, []))
     return result
+
+
+def extract_frames(window: dict, wanted: dict[int, str], folder: Path) -> None:
+    """Write the ``wanted`` frames (frame number to file name) of a window's cut as JPEGs,
+    refusing a video that changed since it was labelled or has the wrong frame count."""
+    import cv2
+
+    if sha256(Path(window["video"])) != window["video_sha256"]:
+        raise RuntimeError(f"{window['video']} changed since it was labelled")
+    capture, index = cv2.VideoCapture(window["video"]), 0
+    try:
+        while capture.grab():
+            if index in wanted:
+                _, image = capture.retrieve()
+                cv2.imwrite(str(folder / wanted[index]), image, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            index += 1
+    finally:
+        capture.release()
+    if index != window["frames"]:
+        raise RuntimeError(f"{window['video']}: decoded {index} frames, expected {window['frames']}")
 
 
 def coco_counts(coco: dict[str, dict]) -> dict:
@@ -613,8 +638,6 @@ def round_data(root: Path = ROUND_ROOT, validation_from: Path | None = None) -> 
     report_path = root / "checks" / "quality_report.json"
 
     def step(heartbeat):
-        import cv2
-
         kept = [w for w in windows if not w["excluded"] and split_of(w["role"], w["day"], validation)]
         labels = {w["window_id"]: read_rows(root / "videos" / w["window_id"] / "labels" / LABELS / "rows.jsonl")
                   for w in kept}
@@ -627,20 +650,7 @@ def round_data(root: Path = ROUND_ROOT, validation_from: Path | None = None) -> 
             folder = target / SPLIT_DIRS[name]
             folder.mkdir(parents=True, exist_ok=True)
             for n, window in enumerate(w for w in kept if w["window_id"] in wanted):
-                if sha256(Path(window["video"])) != window["video_sha256"]:
-                    raise RuntimeError(f"{window['video']} changed since it was labelled")
-                capture, index = cv2.VideoCapture(window["video"]), 0
-                try:
-                    while capture.grab():
-                        if index in wanted[window["window_id"]]:
-                            _, image = capture.retrieve()
-                            cv2.imwrite(str(folder / wanted[window["window_id"]][index]), image,
-                                        [cv2.IMWRITE_JPEG_QUALITY, 92])
-                        index += 1
-                finally:
-                    capture.release()
-                if index != window["frames"]:
-                    raise RuntimeError(f"{window['video']}: decoded {index} frames, expected {window['frames']}")
+                extract_frames(window, wanted[window["window_id"]], folder)
                 heartbeat(split=name, window=n + 1)
             save(target / SPLIT_DIRS[name] / "_annotations.coco.json", data)
         result = {"dataset": target.as_posix(), "counts": coco_counts(coco), "stride": ROUND_STRIDE,
@@ -696,9 +706,10 @@ def pool(summaries: list[dict]) -> dict:
             "share_of_sam3_matched": round(matched / max(1, right), 4)}
 
 
-def round_eval(root: Path = ROUND_ROOT) -> dict:
+def round_eval(root: Path = ROUND_ROOT, labels_root: Path | None = None) -> dict:
     """Part 7: the student on every frame of the validation and test windows. The threshold
-    is chosen on validation windows only, before any test-day agreement is computed."""
+    is chosen on validation windows only, before any test-day agreement is computed.
+    ``labels_root`` is the round holding SAM 3's labels when the student's own folder doesn't."""
     journal = Journal(root)
     model = journal.data["decisions"].get("student_model")
     if not model or not model["trained_on"].startswith("round"):
@@ -725,7 +736,7 @@ def round_eval(root: Path = ROUND_ROOT) -> dict:
         return read_rows(target)
 
     def labels_of(window: dict) -> list[dict]:
-        return read_rows(root / "videos" / window["window_id"] / "labels" / LABELS / "rows.jsonl")
+        return read_rows((labels_root or root) / "videos" / window["window_id"] / "labels" / LABELS / "rows.jsonl")
 
     def summary(window: dict, frames: list[dict], threshold: float) -> dict:
         analysed = range(window["frames"])

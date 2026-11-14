@@ -1,5 +1,5 @@
 # RF-DETR (Apache-2.0) and the packages its `train` extra adds to this .venv, for the Part 3
-# student detector (scripts/student_detector.py). Approved by the user on 2026-10-21.
+# student detector (scripts/student_detector.py). Added 2026-10-21.
 # Install from the repository root (Windows, CPython 3.12):
 #   .venv\Scripts\python.exe -m pip install --no-deps --require-hashes -r scripts\student-requirements.txt
 # Licences: Apache-2.0, MIT, BSD, PSF and ISC. torch-hungarian and faster-coco-eval have none in

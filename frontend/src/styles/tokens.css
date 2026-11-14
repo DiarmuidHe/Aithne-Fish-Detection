@@ -258,7 +258,7 @@
   --leading-lg: 24px;
   --text-xl: 20px;
   --leading-xl: 27px;
-  /* KPI figures only. The prompt's ceiling is 30px and we sit under it. */
+  /* KPI figures only. Kept under a 30px ceiling. */
   --text-2xl: 26px;
   --leading-2xl: 32px;
 

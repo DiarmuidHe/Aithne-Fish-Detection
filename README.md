@@ -1278,7 +1278,7 @@ The adapter follows Fishial's [v2 API reference](https://docs.fishial.ai/api/api
 and [tutorial](https://docs.fishial.ai/api/api_tutorial), checked on 2026-09-10: JSON credentials
 to `/v2/auth`, a bearer token with a 600-second lifetime, then JPEG bytes directly to
 `/v2/recognize`. Species IDs and certainty values resolve through `definitions[species_id].scientificName`.
-This replaces the implementation prompt's older v1 signed-upload sketch. Token refresh occurs
+This replaces an earlier v1 signed-upload design. Token refresh occurs
 before expiry and once after 401, subject to remaining image retry budget. Contract tests use
 `httpx.MockTransport`; no tests contact Fishial, the internet, or cameras.
 
@@ -1298,7 +1298,7 @@ Migration `0006_live_species_id` adds five session columns (`species_id_enabled`
 `species_id_fish_target` and `species_id_frames_per_fish`. Session and track responses include
 progress/results, and `GET /live/{session_id}/species` aggregates the whole session.
 
-Small additions beyond the prompt's file list: Compose passes the same Fishial configuration to
+Other details: Compose passes the same Fishial configuration to
 both relevant services, and stale-worker recovery finishes or abstains outstanding identification
 before removing its scratch crops. Deliberate conservative refinements include rejecting tied
 winners, multiple-fish responses, full-frame crops, and non-HTTPS provider URLs. Call counts are

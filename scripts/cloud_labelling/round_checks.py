@@ -1,4 +1,4 @@
-"""Part 5 of ``docs/smartbay-rolling-training-prompt.md``: automatic checks of a labelled
+"""Part 5 of the SmartBay rolling-training pipeline: automatic checks of a labelled
 round, with no human gate (decided 2026-10-30).
 
 On the instance, from the repository root, after ``run_labelling.sh``:
@@ -7,7 +7,7 @@ On the instance, from the repository root, after ``run_labelling.sh``:
 
 The exclusion rules are recorded in the round journal as decision ``auto_exclusions``
 before any window is measured. A window is excluded if a stage failed for it, it has more
-than 150 label boxes in a frame (the prompt said 40; the user raised it on 2026-10-30 to
+than 150 label boxes in a frame (raised from 40 on 2026-10-30 to
 keep dense schools), static suppression removed more than half its boxes, or it is a
 *strong* window with no labels (so likely-fish footage never teaches "empty"). *None* and
 *murky* windows with labels are flagged but kept: the screening may have been wrong.
@@ -33,8 +33,8 @@ from pathlib import Path
 from scripts.cloud_labelling.run_windows import PROMPT, ROOT, choices
 from scripts.sam3_botsort import Journal, read, read_rows, save
 
-# The prompt's cap of 40 boxes in a frame caught real dense schools (74-94 boxes at peak in 4
-# of the first 9 strong windows); the user raised it to 150 on 2026-10-30, which still catches
+# The first cap of 40 boxes in a frame caught real dense schools (74-94 boxes at peak in 4
+# of the first 9 strong windows); it was raised to 150 on 2026-10-30, which still catches
 # runaway texture boxing and fits RF-DETR Nano's 300 queries.
 RULES = {"max_label_boxes_in_a_frame": 150, "max_static_removed_share": .5,
          "strong_needs_labels": True, "stage_failed": True}

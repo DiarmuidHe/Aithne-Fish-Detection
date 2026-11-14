@@ -76,7 +76,7 @@ PIL transform), converted to float CHW/batch in [-1,1], and inferred in `torch.i
 Finite output is clamped to tanh's [-1,1], denormalized with round-to-nearest uint8,
 converted back to BGR, and JPEG encoded at quality 95. The reference test script saves a
 joint input/output montage with dynamic normalization; this adapter deliberately uses
-the prompt's fixed tanh-range conversion for an individual submitted crop, with no
+a fixed tanh-range conversion for an individual submitted crop, with no
 per-image contrast stretch.
 
 ## Offline measurements
@@ -178,7 +178,7 @@ Each side reports detected objects, nonempty species, accepted top name, certain
 regional rejection, target IoU, usable answer and preprocessing latency. Correct/wrong/
 abstained counts apply only to labelled crops; an unlabelled usable answer proves no accuracy.
 Even two labelled crops would be a screen, not representative production evidence.
-Promotion requires the broader labelled gate in the implementation prompt, unchanged
+Promotion requires passing a broader labelled evaluation, unchanged
 abstention rules/call ceilings and acceptable worker resource cost. **`none` remains the
 justified production default.** There is no missing artifact or licence blocker.
 
@@ -205,4 +205,4 @@ suite passed 330 tests with one skip. The rebuilt image also passed the combined
 H.264/FUnIE smoke without a code bind mount. Only the idle live-worker container was
 recreated; the API, database and processing worker stayed running. Failed camera
 sessions need a new start. Local tests set `FISHIAL_PREPROCESS=none` in the test
-process because the user's `.env` now enables FUnIE using Compose-supplied model defaults.
+process because the local `.env` now enables FUnIE using Compose-supplied model defaults.

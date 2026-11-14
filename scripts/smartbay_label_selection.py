@@ -1,4 +1,4 @@
-"""Part 1 of ``docs/smartbay-cloud-labelling-prompt.md``: choose varied, day-disjoint 30 s
+"""Part 1 of the SmartBay labelling pipeline: choose varied, day-disjoint 30 s
 windows from the SmartBay archive scan, for SAM 3 "fish" labelling on one EC2 g5.xlarge.
 
 PowerShell, from the repository root (no network, no GPU, no cost):
@@ -19,7 +19,7 @@ Deterministic under ``--seed``. The scan's ranks are unreviewed screening: they 
 here and are never labels. Expert days are reserved for a human-reviewed check set, so no
 window is chosen from them; test days are labelled but never trained on.
 
-Later rounds (Part 1 of ``docs/smartbay-rolling-training-prompt.md``) keep an earlier
+Later rounds (Part 1 of the SmartBay rolling-training pipeline) keep an earlier
 selection and add only the days completed since:
 
     .venv\\Scripts\\python.exe -m scripts.smartbay_label_selection `

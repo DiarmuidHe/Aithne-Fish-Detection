@@ -22,7 +22,7 @@ describe('the review queue keyboard map', () => {
     });
   });
 
-  it('matches the keys the prompt specified', () => {
+  it('maps the review-queue shortcut keys', () => {
     expect(resolveCommand({ key: 'j' })).toBe('next');
     expect(resolveCommand({ key: 'k' })).toBe('previous');
     expect(resolveCommand({ key: 'a' })).toBe('accept');
