@@ -283,7 +283,8 @@ def restore(root: Path = ROUND, out: Path = OUT, workers: int = 2, limit: int | 
     """Every cut a later stage reads, skipping those already in place. Progress is kept in
     ``restored.json``, so a rerun repeats only what failed."""
     journal, record_path = Journal(out, {"training": TRAINING_BUDGET}), out / "restored.json"
-    validation = set(read(root / "journal.json")["decisions"]["validation_days"]["days"])
+    # Before a round's validation days are chosen, every training day's windows are needed anyway
+    validation = set(read(root / "journal.json")["decisions"].get("validation_days", {}).get("days", []))
     windows = [w for w in all_windows(root) if use_of(w, validation) and "video" in w][:limit]
     with (root / "selection" / "to_label.csv").open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))

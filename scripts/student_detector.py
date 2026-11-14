@@ -668,9 +668,14 @@ def coco_counts(coco: dict[str, dict]) -> dict:
 
 
 def round_data(root: Path = ROUND_ROOT, validation_from: Path | None = None) -> dict:
-    """Part 6: the day-split COCO dataset of a round, under ``<root>/dataset``."""
+    """Part 6: the day-split COCO dataset of a round, under ``<root>/dataset``. A window that
+    ``hard_negatives restore`` re-cut into this folder is read at the SHA256 ``restored.json``
+    recorded: restore checked its public source, and the encoder may differ."""
     journal = Journal(root)
-    windows = round_windows(root)
+    restored = root / "restored.json"
+    recut = {k: v["sha256"] for k, v in read(restored)["windows"].items()} if restored.exists() else {}
+    windows = [w | {"video_sha256": recut[w["window_id"]]} if w["window_id"] in recut and "video" in w else w
+               for w in round_windows(root)]
     if "validation_days" not in journal.data["decisions"]:
         roles = read(root / "selection" / "day_roles.json")["roles"]
         frozen = read(validation_from)["decisions"]["validation_days"] if validation_from else None
@@ -740,6 +745,11 @@ def round_train(root: Path = ROUND_ROOT, validation_from: Path | None = None) ->
     return result
 
 
+def camera_of(window_id: str) -> str:
+    """The camera in a window's ID, e.g. SmartBayCam2 from SmartBayCam2_2025-10-10_0244_f0123."""
+    return window_id.split("_", 1)[0]
+
+
 def pool(summaries: list[dict]) -> dict:
     """Agreement summed over windows: matched boxes against both sides' boxes."""
     left, right = sum(s["left_boxes"] for s in summaries), sum(s["right_boxes"] for s in summaries)
@@ -801,15 +811,23 @@ def round_eval(root: Path = ROUND_ROOT, labels_root: Path | None = None) -> dict
                     "ties to the higher threshold"})
     threshold = journal.data["decisions"]["student_threshold"]["threshold"]
     per_window = {w["window_id"]: summary(w, frames[w["window_id"]], threshold) for w in test}
-    empty_water = {}
-    for stratum in ("none", "murky"):
-        chosen = [w for w in test if w["evidence"] == stratum]
+
+    def water(chosen: list[dict]) -> dict:
         boxes = [len(raw_rows([f], w["fps"], threshold)) for w in chosen for f in frames[w["window_id"]]]
         label_boxes = sum(len(labels_of(w)) for w in chosen)
-        empty_water[stratum] = {"windows": len(chosen), "frames": len(boxes),
-                                "student_boxes_per_frame": round(sum(boxes) / max(1, len(boxes)), 4),
-                                "frames_with_a_student_box": round(sum(b > 0 for b in boxes) / max(1, len(boxes)), 4),
-                                "sam3_label_boxes_per_frame": round(label_boxes / max(1, len(boxes)), 4)}
+        return {"windows": len(chosen), "frames": len(boxes),
+                "student_boxes_per_frame": round(sum(boxes) / max(1, len(boxes)), 4),
+                "frames_with_a_student_box": round(sum(b > 0 for b in boxes) / max(1, len(boxes)), 4),
+                "sam3_label_boxes_per_frame": round(label_boxes / max(1, len(boxes)), 4)}
+
+    empty_water = {stratum: water([w for w in test if w["evidence"] == stratum]) for stratum in ("none", "murky")}
+    cameras = sorted({camera_of(w["window_id"]) for w in test})
+    by_camera = {camera: {
+        "agreement": {"all": pool([per_window[w["window_id"]] for w in test if camera_of(w["window_id"]) == camera]),
+                      **{s: pool([per_window[w["window_id"]] for w in test
+                                  if camera_of(w["window_id"]) == camera and w["evidence"] == s]) for s in STRATA}},
+        "empty_water_proxy": {s: water([w for w in test if camera_of(w["window_id"]) == camera and w["evidence"] == s])
+                              for s in ("none", "murky")}} for camera in cameras}
     speeds = [w["speed"] for w in validation + test]
     result = {
         "note": "Agreement with SAM 3's unreviewed labels on test days only, never precision, recall or accuracy. "
@@ -817,7 +835,7 @@ def round_eval(root: Path = ROUND_ROOT, labels_root: Path | None = None) -> dict
         "threshold": threshold, "test_days": sorted({w["day"] for w in test}),
         "agreement": {"all": pool(list(per_window.values())),
                       **{s: pool([per_window[w["window_id"]] for w in test if w["evidence"] == s]) for s in STRATA}},
-        "empty_water_proxy": empty_water,
+        "empty_water_proxy": empty_water, "by_camera": by_camera,
         "speed_1080p": {"windows": len(speeds), "gpu": speeds[0]["gpu"] if speeds else None,
                         "total_ms_p50_median": percentiles([s["total_ms"]["p50"] for s in speeds])["p50"],
                         "total_ms_p95_max": max((s["total_ms"]["p95"] for s in speeds), default=None),
@@ -859,8 +877,9 @@ def training_overlap(root: Path, model: dict, key: str) -> dict:
     if clip and roles.exists() and windows.exists():
         with windows.open(newline="", encoding="utf-8") as stream:
             stems = {Path(r["source_mp4_url"]).stem for r in csv.DictReader(stream)}
+        key = clip[2] if clip[1] == "SmartBayCam1" else f"{clip[2]}@{clip[1]}"  # Day keys, as the selection writes them
         result |= {"camera_in_round": any(s.startswith(clip[1] + "_") for s in stems),
-                   "day_role": read(roles)["roles"].get(clip[2]), "same_clip_in_round": clip[0] in stems}
+                   "day_role": read(roles)["roles"].get(key), "same_clip_in_round": clip[0] in stems}
     return result
 
 

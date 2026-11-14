@@ -53,13 +53,17 @@ def stub_scan(monkeypatch, days, empty=()):
     light, clarity = dict(zip(sel.TERTILES, (100, 120, 140))), dict(zip(sel.TERTILES, (20, 30, 40)))
     pngs = {f"p{m}-{k}": png(f"p{m}-{k}", mean=m, contrast=k) for m in light.values() for k in clarity.values()}
 
-    def describe(day, state, rows):
-        return [c | {"light_mean": light[c["light"]], "contrast": clarity[c["clarity"]]}
-                for c in ([] if day in empty else full_day(day)[::3])]
+    def describe(day, state, rows, camera=sel.CAMERA):
+        clips = [c | {"light_mean": light[c["light"]], "contrast": clarity[c["clarity"]]}
+                 for c in ([] if day in empty else full_day(day)[::3])]
+        if camera != sel.CAMERA:  # The same footage, as another camera's clips
+            clips = [c | {"day": sel.day_key(camera, day), "camera": camera, "stem": c["stem"].replace(sel.CAMERA, camera),
+                          "url": c["url"].replace(sel.CAMERA, camera)} for c in clips]
+        return clips
 
     monkeypatch.setattr(sel, "completed_days", lambda scan=sel.SCAN: list(days))
     monkeypatch.setattr(sel, "ledger_days", lambda scan=sel.SCAN: list(days), raising=False)
-    monkeypatch.setattr(sel, "load_day", lambda day, scan=sel.SCAN: ({"images": pngs}, []))
+    monkeypatch.setattr(sel, "load_day", lambda day, scan=sel.SCAN, camera=sel.CAMERA: ({"images": pngs}, []))
     monkeypatch.setattr(sel, "describe_day", describe)
     monkeypatch.setattr(sel, "contact_sheet", lambda windows, scan, path: None)
 
@@ -317,3 +321,62 @@ def test_labelled_windows_leave_to_label_and_the_kept_round_is_checked(monkeypat
     stub_scan(monkeypatch, DAYS[1:45])  # the ledger lost a kept day: wrong --scan
     with pytest.raises(RuntimeError, match="ledger"):
         sel.select_round(SCAN, tmp_path / "r1c", round_0)
+
+
+CAM2 = "SmartBayCam2"
+
+
+def test_another_camera_gets_its_own_days_roles_and_clip_geometry(monkeypatch, tmp_path, round_0):
+    stub_scan(monkeypatch, DAYS[:45], empty={DAYS[12]})
+    cam2_days = DAYS[20:50]  # Overlaps Cam 1's dates on purpose: a date is not a day key
+    monkeypatch.setattr(sel, "scanned_days", lambda camera, scan=sel.SCAN: list(cam2_days))
+    monkeypatch.setattr(sel, "FORCED_ROLES", {f"{DAYS[25]}@{CAM2}": ("test", "a held-out clip")})
+    summary = sel.select_round(SCAN, tmp_path / "r1", round_0, cameras=(CAM2,), only_new=True)
+    roles = json.loads((tmp_path / "r1" / "day_roles.json").read_text(encoding="utf-8"))["roles"]
+    cam2 = {k: r for k, r in roles.items() if k.endswith(f"@{CAM2}")}
+    assert sorted(cam2) == [f"{d}@{CAM2}" for d in cam2_days]
+    assert cam2[f"{DAYS[25]}@{CAM2}"] == "test"
+    counts, planned = Counter(cam2.values()), sel.round_role_counts(len(cam2_days))
+    assert counts["expert"] == planned["expert"] and counts["test"] - planned["test"] in (0, 1)  # +1 if forced
+    assert all(roles[d] for d in DAYS[20:45])  # Cam 1's same dates keep roles of their own
+
+    manifest, to_label = read_csv(tmp_path / "r1" / "manifest.csv"), read_csv(tmp_path / "r1" / "to_label.csv")
+    rows = [r for r in manifest if r["window_id"].startswith(CAM2)]
+    assert rows and all(r["day"].endswith(f"@{CAM2}") and r["role"] == roles[r["day"]] for r in rows)
+    assert all(int(r["frame_count"]) == 375 and r["fps"] == "12.500000" and r["assumed_clip_frames"] == "1440"
+               for r in rows)
+    assert all(0 <= int(r["start_frame"]) <= 1440 - 375 for r in rows)
+    assert {r["round"] for r in to_label} == {"1"}  # Only new windows: round 0's labels are reused
+    assert summary["to_label"]["by_camera"][CAM2] == len(rows)
+    assert summary["other_cameras"][CAM2]["new_days"]["count"] == len(cam2_days)
+
+
+def test_a_forced_role_never_lands_on_an_unscreened_day_and_is_recorded(monkeypatch, tmp_path, round_0):
+    stub_scan(monkeypatch, DAYS[:45], empty={DAYS[12], DAYS[25]})
+    monkeypatch.setattr(sel, "scanned_days", lambda camera, scan=sel.SCAN: DAYS[20:50])
+    monkeypatch.setattr(sel, "FORCED_ROLES", {f"{DAYS[25]}@{CAM2}": ("test", "a held-out clip")})
+    summary = sel.select_round(SCAN, tmp_path / "r1", round_0, cameras=(CAM2,))
+    roles = json.loads((tmp_path / "r1" / "day_roles.json").read_text(encoding="utf-8"))["roles"]
+    assert roles[f"{DAYS[25]}@{CAM2}"] == "unused" and summary["other_cameras"][CAM2]["forced_roles"] == {}
+
+
+def test_scan_days_spread_over_the_days_not_yet_scanned(tmp_path):
+    days = [(date(2025, 6, 1) + timedelta(days=i)).isoformat() for i in range(100)]
+    (tmp_path / f"{CAM2}_2025").mkdir()
+    (tmp_path / f"{CAM2}_2025" / "year_state.json").write_text(json.dumps({"discovered_days": days}))
+    for d in days[:10]:
+        (tmp_path / f"{CAM2}_{d}").mkdir()
+    picked = sel.pick_scan_days(CAM2, 9, tmp_path)
+    assert len(picked) == 9 and not set(picked) & set(days[:10])
+    assert picked == sorted(picked) and picked[0] < days[20] and picked[-1] > days[89]
+    assert picked == sel.pick_scan_days(CAM2, 9, tmp_path)
+
+
+def test_scanned_days_count_only_complete_day_reports(tmp_path):
+    for day, done in (("2025-07-01", True), ("2025-07-02", False)):
+        (tmp_path / f"{CAM2}_{day}").mkdir()
+        (tmp_path / f"{CAM2}_{day}" / "summary.json").write_text(json.dumps({
+            "day": day, "selected_pngs": 30, "processed_pngs": 30 if done else 12, "selected_mp4s": 3,
+            "processed_mp4s": 3}))
+    assert sel.scanned_days(CAM2, tmp_path) == ["2025-07-01"]
+    assert sel.split_key(f"2025-07-01@{CAM2}") == (CAM2, "2025-07-01") and sel.split_key("2025-07-01")[0] == sel.CAMERA

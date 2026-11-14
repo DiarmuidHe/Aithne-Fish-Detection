@@ -70,9 +70,11 @@ def contents(repo: Path, round_dir: Path, extra: tuple[str, ...] = ()) -> dict[s
     return wanted
 
 
-def build(repo: Path, round_dir: Path, output: Path, extra: tuple[str, ...] = ()) -> dict:
-    """Write the bundle through a temporary name, so a stopped run leaves no file to upload by mistake."""
-    files = contents(repo, round_dir, extra)
+def build(repo: Path, round_dir: Path, output: Path, extra: tuple[str, ...] = (),
+          files: dict[str, Path] | None = None) -> dict:
+    """Write the bundle through a temporary name, so a stopped run leaves no file to upload by
+    mistake. ``files`` (name inside to file here) replaces the hard-negatives allowlist."""
+    files = files if files is not None else contents(repo, round_dir, extra)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(output.name + ".tmp")
     sums = []

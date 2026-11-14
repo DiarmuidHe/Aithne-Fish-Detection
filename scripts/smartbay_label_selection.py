@@ -77,6 +77,15 @@ BAD = {"black", "camera_off", "frozen"}
 # Days a model has already been developed or checked on: never expert days.
 TOUCHED_DAYS = {"2025-07-17": "Cam 2's video of this date trained the RF-DETR student (2026-10-21)",
                 "2025-08-01": "the RF-DETR student's Cam 1 evaluation and the Part 0 download (2026-10-21)"}
+# Other cameras (round 2, 2026-11-14). A day of another camera is keyed "<date>@<camera>", so
+# its role is its own: Cam 2 gets its own training, test and expert days. Cam 2's clips are
+# 1,440 frames at 12.5 FPS (every clip the scan sampled), Cam 1's 1,680 at 15000/1001.
+CAMERAS = {CAMERA: {"clip_frames": 1680, "fps": 15000 / 1001},
+           "SmartBayCam2": {"clip_frames": 1440, "fps": 12.5}}
+# Cam 2's 2025-07-17 is the PC's one SAM 3-labelled clip from a camera round 1 never saw
+# (upload 85ea19d4): held out, so it stays an unseen day once Cam 2 trains.
+FORCED_ROLES = {"2025-07-17@SmartBayCam2": ("test", ("the PC's SAM 3-labelled Cam 2 clip (upload 85ea19d4) is from "
+                                                     "this day; it trained the smoke-test student, never round 2's"))}
 # Estimate inputs; Part 3 replaces the speed with one measured on the A10G.
 ASSUMED_FPS = 2.5           # SAM 3 detector, FP16, 1008 px, on this laptop
 LOAD_SECONDS = 17           # SAM 3 load per window (16-18 s on this laptop)
@@ -97,6 +106,26 @@ def utc_today() -> str:
     return datetime.now(UTC).strftime("%Y%m%d")
 
 
+def day_key(camera: str, day: str) -> str:
+    """A day's key in the roles: the date for Cam 1, as every earlier round wrote it, and
+    "<date>@<camera>" for another camera."""
+    return day if camera == CAMERA else f"{day}@{camera}"
+
+
+def split_key(key: str) -> tuple[str, str]:
+    """A day key's camera and date."""
+    day, _, camera = key.partition("@")
+    return camera or CAMERA, day
+
+
+def date_of(key: str) -> date:
+    return date.fromisoformat(split_key(key)[1])
+
+
+def window_frames(camera: str = CAMERA) -> int:
+    return round(WINDOW_SECONDS * CAMERAS[camera]["fps"])
+
+
 # ---------------------------------------------------------------- the scan --
 
 def completed_days(scan: Path = SCAN) -> list[str]:
@@ -111,15 +140,41 @@ def ledger_days(scan: Path = SCAN) -> list[str]:
     return sorted(set(completed_days(scan)) & set(state["completed_days"]))
 
 
-def load_day(day: str, scan: Path = SCAN) -> tuple[dict, list[dict]]:
-    directory = scan / f"{CAMERA}_{day}"
+def scanned_days(camera: str, scan: Path = SCAN) -> list[str]:
+    """Another camera's days, from each day's own report rather than a year ledger: Cam 2's
+    were scanned as a sample and then one day at a time. A day counts when every PNG and MP4
+    it selected was processed."""
+    days = []
+    for path in sorted(scan.glob(f"{camera}_2025-*/summary.json")):
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        if (summary.get("processed_pngs") == summary.get("selected_pngs")
+                and summary.get("processed_mp4s") == summary.get("selected_mp4s")):
+            days.append(summary["day"])
+    return days
+
+
+def pick_scan_days(camera: str, count: int, scan: Path = SCAN, seed: int = SEED) -> list[str]:
+    """``count`` more of a camera's 2025 archive days to scan: one seeded pick from each
+    consecutive slice of the days its year ledger discovered and no scan has touched, so they
+    spread over the season as the first sample did."""
+    state = json.loads((scan / f"{camera}_2025" / "year_state.json").read_text(encoding="utf-8"))
+    touched = {p.name.removeprefix(f"{camera}_") for p in scan.glob(f"{camera}_2025-*") if p.is_dir()}
+    left = [d for d in sorted(state["discovered_days"]) if d not in touched]
+    if count >= len(left):
+        return left
+    rng = random.Random(seed)
+    return [rng.choice(left[i * len(left) // count:(i + 1) * len(left) // count]) for i in range(count)]
+
+
+def load_day(day: str, scan: Path = SCAN, camera: str = CAMERA) -> tuple[dict, list[dict]]:
+    directory = scan / f"{camera}_{day}"
     state = json.loads((directory / "state.json").read_text(encoding="utf-8"))
     with (directory / "review_manifest.csv").open(encoding="utf-8") as stream:
         return state, list(csv.DictReader(stream))
 
 
 def evidence_of(rank: str, reason: str, nearby: list[dict], scan_error: str = "",
-                frames: int | None = None) -> tuple[str | None, str]:
+                frames: int | None = None, window: int = WINDOW_FRAMES) -> tuple[str | None, str]:
     """A clip's evidence stratum, or None and why it is excluded. Murky clips (``unusable``
     only because their PNGs are ``obscured``) are kept: murky water is what the student must
     handle, though the scan's quality rule drops it. ``frames`` is the clip's length where
@@ -129,7 +184,7 @@ def evidence_of(rank: str, reason: str, nearby: list[dict], scan_error: str = ""
         return None, "no PNG coverage"
     if scan_error or any(p.get("error") for p in nearby):
         return None, "scan error"
-    if frames is not None and frames < WINDOW_FRAMES:
+    if frames is not None and frames < window:
         return None, "clip shorter than the window (scan sampled it)"
     if qualities <= BAD:
         return None, "PNGs all black, camera-off or frozen"
@@ -144,9 +199,10 @@ def evidence_of(rank: str, reason: str, nearby: list[dict], scan_error: str = ""
     return None, f"in no stratum ({rank}; PNGs {'+'.join(sorted(q or '?' for q in qualities))})"
 
 
-def describe_day(day: str, state: dict, rows: list[dict]) -> list[dict]:
+def describe_day(day: str, state: dict, rows: list[dict], camera: str = CAMERA) -> list[dict]:
     """Every clip of a day with its evidence, light, clarity, hour and density, from the
-    PNGs ``rank_clip`` pairs it with (1 minute before to 3 minutes after its start)."""
+    PNGs ``rank_clip`` pairs it with (1 minute before to 3 minutes after its start). Each
+    clip's ``day`` is its day key (``day_key``)."""
     thumbs = [u for u in state.get("selected_png_urls", []) if "thumbnail" in state["images"].get(u, {})]
     thumb_index = {u: i for i, u in enumerate(thumbs)}
     images = [{**e, **state["images"][e["url"]], "thumb_index": thumb_index.get(e["url"])}
@@ -157,12 +213,13 @@ def describe_day(day: str, state: dict, rows: list[dict]) -> list[dict]:
         entry = entries[row["source_mp4_url"]]
         nearby = nearby_images(entry, images)
         evidence, excluded = evidence_of(row["screening_rank"], row["rank_reason"], nearby, row.get("scan_error", ""),
-                                         state["clips"].get(entry["url"], {}).get("frame_count"))
+                                         state["clips"].get(entry["url"], {}).get("frame_count"), window_frames(camera))
         seen = [p for p in nearby if p.get("quality") not in BAD and "metrics" in p]
         usable = [p for p in nearby if p.get("quality") == "usable"]
         detections = max((p.get("detection_count", 0) for p in usable), default=0)
         clips.append({
-            "day": day, "url": entry["url"], "stem": Path(entry["name"]).stem, "clip_time": entry["timestamp"],
+            "day": day_key(camera, day), "camera": camera, "url": entry["url"], "stem": Path(entry["name"]).stem,
+            "clip_time": entry["timestamp"],
             "rank": row["screening_rank"], "rank_reason": row["rank_reason"], "evidence": evidence,
             "excluded": excluded, "nearby": nearby,
             "light_mean": statistics.median(p["metrics"]["mean"] for p in seen) if seen else None,
@@ -174,12 +231,12 @@ def describe_day(day: str, state: dict, rows: list[dict]) -> list[dict]:
     return clips
 
 
-def describe_days(days: list[str], scan: Path = SCAN) -> tuple[list[dict], list[dict]]:
-    """Every clip of the days, and every PNG the scan recorded on them."""
+def describe_days(days: list[str], scan: Path = SCAN, camera: str = CAMERA) -> tuple[list[dict], list[dict]]:
+    """Every clip of one camera's days, and every PNG the scan recorded on them."""
     clips, images = [], []
     for day in days:
-        state, rows = load_day(day, scan)
-        clips += describe_day(day, state, rows)
+        state, rows = load_day(day, scan, camera)
+        clips += describe_day(day, state, rows, camera)
         images += list(state["images"].values())
     return clips, images
 
@@ -225,23 +282,24 @@ def capacity(clips: list[dict]) -> int:
 
 
 def assign_roles(days: list[str], room: dict[str, int], seed: int = SEED, counts: dict = ROLE_DAYS,
-                 touched: dict = TOUCHED_DAYS, first: str | None = None) -> dict[str, str]:
+                 touched: dict = TOUCHED_DAYS, first: str | None = None, weekly: bool = True) -> dict[str, str]:
     """Day roles before any window: expert days first, then test days, each one seeded pick
     from its own consecutive stretch of the screened days, so both spread over the season;
     a pick that would leave a week without a training day is skipped. Every other screened
     day trains. ``room`` is each day's capacity: a day that can't hold a test day's windows
     is unscreened and gets no role ("unused"); one that can't hold a training day's is
     taken as its stretch's test day. Touched days are never expert days. Weeks count from
-    ``first`` (default the first day)."""
-    first = date.fromisoformat(first or days[0])
-    week = lambda d: (date.fromisoformat(d) - first).days // 7  # noqa: E731
+    ``first`` (default the first day). ``weekly`` False drops the week rule, for a camera
+    scanned as a sparse sample, where most weeks hold one day."""
+    first = date_of(first or days[0])
+    week = lambda d: (date_of(d) - first).days // 7  # noqa: E731
     pool = [d for d in days if room.get(d, 0) >= WINDOWS_PER_DAY["test"]]
     roles = {d: "unused" for d in days if d not in pool}
     rng = random.Random(seed)
 
     def keeps_training(day: str) -> bool:
-        return any(d != day and d not in roles and week(d) == week(day) and room[d] >= WINDOWS_PER_DAY["train"]
-                   for d in pool)
+        return not weekly or any(d != day and d not in roles and week(d) == week(day)
+                                 and room[d] >= WINDOWS_PER_DAY["train"] for d in pool)
 
     for role, allowed in (("expert", lambda d: d not in touched), ("test", lambda d: True)):
         n = counts[role]
@@ -321,9 +379,13 @@ def choose_windows(clips: list[dict], roles: dict[str, str], seed: int = SEED) -
         spread = -(counts["clarity"][clip["clarity"]] + counts["density"][clip["density"]]) / total
         return light + hour, spread
 
+    def geometry(clip: dict) -> tuple[int, int]:
+        camera = clip.get("camera", CAMERA)
+        return CAMERAS[camera]["clip_frames"], window_frames(camera)
+
     def take(clip: dict, reason: str) -> None:
-        start = place(rng)
-        window = clip | {"start_frame": start, "frame_count": WINDOW_FRAMES, "role": roles[clip["day"]],
+        start = place(rng, *geometry(clip))
+        window = clip | {"start_frame": start, "frame_count": geometry(clip)[1], "role": roles[clip["day"]],
                          "window_id": f"{clip['stem']}_f{start:04d}", "reason": reason}
         windows.append(window)
         per_day[clip["day"]].append(window)
@@ -363,7 +425,7 @@ def choose_windows(clips: list[dict], roles: dict[str, str], seed: int = SEED) -
         if options:
             reserve = options[0]
             used.add(reserve["url"])
-            start = place(rng)
+            start = place(rng, *geometry(reserve))
             window["reserve"] = {"url": reserve["url"], "clip_time": reserve["clip_time"], "start_frame": start,
                                  "window_id": f"{reserve['stem']}_f{start:04d}"}
     windows.sort(key=lambda w: (w["day"], w["clip_time"]))
@@ -412,11 +474,13 @@ def _sheet(path: str):
 
 def thumbnail(scan: Path, day: str, index: int | None):
     """The scan's 400x252 thumbnail of a PNG, cut from the day's PNG contact sheet (40 to a
-    sheet, 4 across); the separate thumbnail files were cleaned up after each day."""
+    sheet, 4 across); the separate thumbnail files were cleaned up after each day. ``day`` is
+    a day key."""
     if index is None:
         return None
+    camera, date_text = split_key(day)
     name = "png_pilot.jpg" if index < 40 else f"png_page_{index // 40 + 1:03d}.jpg"
-    sheet = _sheet(str(scan / f"{CAMERA}_{day}" / "contact_sheets" / name))
+    sheet = _sheet(str(scan / f"{camera}_{date_text}" / "contact_sheets" / name))
     if sheet is None:
         return None
     row, col = divmod(index % 40, 4)
@@ -430,7 +494,8 @@ def contact_sheet(windows: list[dict], scan: Path, path: Path) -> None:
 
     tiles = []
     for window in windows:
-        start = datetime.fromisoformat(window["clip_time"]) + timedelta(seconds=window["start_frame"] / CLIP_FPS)
+        fps = CAMERAS[window.get("camera", CAMERA)]["fps"]
+        start = datetime.fromisoformat(window["clip_time"]) + timedelta(seconds=window["start_frame"] / fps)
         nearest = min(window["nearby"], key=lambda p: abs(datetime.fromisoformat(p["timestamp"]) - start))
         tile = thumbnail(scan, window["day"], nearest.get("thumb_index"))
         if tile is None:
@@ -474,9 +539,11 @@ MANIFEST_FIELDS = ["window_id", "day", "role", "source_mp4_url", "clip_time", "s
 
 def manifest_row(window: dict) -> dict:
     reserve = window.get("reserve", {})
+    camera = CAMERAS[window.get("camera", CAMERA)]
     return {"window_id": window["window_id"], "day": window["day"], "role": window["role"],
             "source_mp4_url": window["url"], "clip_time": window["clip_time"], "start_frame": window["start_frame"],
-            "frame_count": window["frame_count"], "assumed_clip_frames": CLIP_FRAMES, "fps": f"{CLIP_FPS:.6f}",
+            "frame_count": window["frame_count"], "assumed_clip_frames": camera["clip_frames"],
+            "fps": f"{camera['fps']:.6f}",
             "evidence": window["evidence"], "light": window["light"], "light_mean": window["light_mean"],
             "clarity": window["clarity"], "contrast": window["contrast"], "hour_bin": window["hour_bin"],
             "density": window["density"], "screening_rank": window["rank"], "rank_reason": window["rank_reason"],
@@ -497,10 +564,10 @@ ROLE_MEANING = {"train": "labelled, trained on", "test": "labelled, never traine
 
 def by_week(roles: dict[str, str]) -> dict:
     """Each week's days by role, weeks counted from the first day."""
-    first = date.fromisoformat(min(roles))
+    first = min(date_of(d) for d in roles)
     weeks = defaultdict(lambda: defaultdict(list))
     for day, role in roles.items():
-        weeks[f"week {(date.fromisoformat(day) - first).days // 7 + 1}"][role].append(day)
+        weeks[f"week {(date_of(day) - first).days // 7 + 1}"][role].append(day)
     return {w: dict(r) for w, r in weeks.items()}
 
 
@@ -612,20 +679,61 @@ def round_estimate(rows: list[dict]) -> dict:
                     "measures with one process against two. EBS and transfer are estimated separately."}
 
 
-def select_round(scan: Path, out: Path, keep: Path, seed: int = SEED, labelled: frozenset[str] = frozenset()) -> dict:
-    """A later round over the selection in ``keep`` (see the module docstring)."""
+def plan_camera(camera: str, scan: Path, kept: dict, seed: int = SEED) -> dict | None:
+    """Another camera's new days, roles and windows for a round: its days are keyed
+    ``<date>@<camera>`` and get roles of their own at ``round_role_counts``, with
+    ``FORCED_ROLES`` applied after; its windows fill the quotas within the camera. The
+    tertile cuts stay the kept round's, so "light" means the same on every camera. None
+    when the camera has no new day."""
+    days = scanned_days(camera, scan)
+    keys = {day_key(camera, d): d for d in days}
+    if lost := sorted(k for k in kept["roles"] if split_key(k)[0] == camera and k not in keys):
+        raise RuntimeError(f"kept {camera} days the scan doesn't have: {lost[:5]}; is --scan right?")
+    new_days = [d for d in days if day_key(camera, d) not in kept["roles"]]
+    if not new_days:
+        return None
+    clips, images = describe_days(new_days, scan, camera)
+    room = {day_key(camera, d): capacity([c for c in clips if c["day"] == day_key(camera, d)]) for d in new_days}
+    add_tertiles(clips, images, kept["cuts"])
+    touched = {k: reason for k, (_, reason) in FORCED_ROLES.items()} | TOUCHED_DAYS
+    counts = round_role_counts(len(new_days))
+    # A sampled camera has about one day a week, so the week rule would block every pick; the
+    # stretches still spread expert and test days over the season.
+    roles = assign_roles(list(room), room, seed, counts, touched, min([*kept["roles"], *room]), weekly=False)
+    forced = {}
+    for key, (role, reason) in FORCED_ROLES.items():
+        if roles.get(key, "unused") != "unused" and roles[key] != role:
+            forced[key] = {"assigned": roles[key], "forced": role, "reason": reason}
+            roles[key] = role
+    windows, achieved = choose_windows(clips, roles, seed)
+    return {"camera": camera, "days": new_days, "clips": clips, "room": room, "roles": roles, "windows": windows,
+            "achieved": achieved, "planned": counts | {"train": "the rest"}, "forced": forced}
+
+
+def select_round(scan: Path, out: Path, keep: Path, seed: int = SEED, labelled: frozenset[str] = frozenset(),
+                 cameras: tuple[str, ...] = (), only_new: bool = False) -> dict:
+    """A later round over the selection in ``keep`` (see the module docstring). ``cameras``
+    adds other cameras' new days (``plan_camera``); ``only_new`` lists only this round's new
+    windows in ``to_label.csv``, so earlier rounds' labels are reused rather than redone."""
     if out.resolve() == keep.resolve():
         raise ValueError(f"{out} is the kept selection; write the new round elsewhere")
     kept = read_kept(keep)
     n = kept["round"] + 1
     days = ledger_days(scan)
-    if lost := sorted(set(kept["roles"]) - set(days)):
+    if lost := sorted(d for d in kept["roles"] if split_key(d)[0] == CAMERA and d not in days):
         raise RuntimeError(f"kept days the ledger doesn't call completed: {lost[:5]}; is --scan right?")
     new_days = [d for d in days if d not in kept["roles"]]
     clips, images = describe_days(new_days, scan)
     room = {day: capacity([c for c in clips if c["day"] == day]) for day in new_days}
     cuts = add_tertiles(clips, images, kept["cuts"])
     new_roles, windows, achieved = plan_round(days, clips, room, kept["roles"], seed)
+    cam1_roles = dict(new_roles)
+    others = [p for p in (plan_camera(c, scan, kept, seed) for c in cameras) if p]
+    for plan in others:
+        new_roles |= plan["roles"]
+        windows += plan["windows"]
+        clips += plan["clips"]
+        room |= plan["room"]
     roles = dict(sorted((kept["roles"] | new_roles).items()))
     day_round = dict(sorted((kept["day_round"] | dict.fromkeys(new_roles, n)).items()))
     new_rows = [manifest_row(w) | {"round": str(n)} for w in windows]
@@ -634,7 +742,7 @@ def select_round(scan: Path, out: Path, keep: Path, seed: int = SEED, labelled: 
         raise RuntimeError("a new window repeats a kept window's ID")
     if unknown := sorted(labelled - {r["window_id"] for r in rows}):
         raise ValueError(f"--labelled names windows in no round: {unknown[:5]}")
-    to_label = [r for r in rows if r["window_id"] not in labelled]
+    to_label = [r for r in (new_rows if only_new else rows) if r["window_id"] not in labelled]
     fields = ["window_id", "round", *MANIFEST_FIELDS[1:]]
     planned = round_role_counts(len(new_days)) | {"train": "the rest"}
     kept_files = {"dir": keep.as_posix(), "round": kept["round"], "sha256": kept["sha256"]}
@@ -663,7 +771,7 @@ def select_round(scan: Path, out: Path, keep: Path, seed: int = SEED, labelled: 
         "ledger": {"completed_days": len(days), "first": days[0], "last": days[-1]},
         "kept": kept_files | {"days": len(kept["roles"]), "windows": len(kept["rows"])},
         "new_days": {"count": len(new_days), "first": new_days[0], "last": new_days[-1], "planned": planned,
-                     "roles": dict(Counter(new_roles.values()))},
+                     "roles": dict(Counter(cam1_roles.values()))},
         "window_seconds": WINDOW_SECONDS, "window_frames": WINDOW_FRAMES,
         "min_clip_gap_minutes": MIN_CLIP_GAP.total_seconds() / 60,
         "tertile_cuts": {"light": cuts["light"], "clarity": cuts["clarity"],
@@ -675,8 +783,15 @@ def select_round(scan: Path, out: Path, keep: Path, seed: int = SEED, labelled: 
             "slots": sum(WINDOWS_PER_DAY[r] for r in new_roles.values() if r in WINDOWS_PER_DAY),
             "short_days": short_days, "quotas": achieved, **tally(new_rows)},
         "cumulative": {"days_by_role": dict(Counter(roles.values())), **tally(rows)},
-        "to_label": {"windows": len(to_label), "already_labelled": len(rows) - len(to_label),
-                     "by_round": dict(sorted(Counter(r["round"] for r in to_label).items()))},
+        "other_cameras": {p["camera"]: {
+            "new_days": {"count": len(p["days"]), "first": p["days"][0], "last": p["days"][-1],
+                         "planned": p["planned"], "roles": dict(Counter(p["roles"].values()))},
+            "forced_roles": p["forced"], "quotas": p["achieved"],
+            "role_rule": "as Cam 1's, without the week rule: a sampled camera has about one day a week",
+            **tally([r for r in new_rows if split_key(r["day"])[0] == p["camera"]])} for p in others},
+        "to_label": {"windows": len(to_label), "already_labelled": len(rows) - len(to_label), "only_new": only_new,
+                     "by_round": dict(sorted(Counter(r["round"] for r in to_label).items())),
+                     "by_camera": dict(sorted(Counter(split_key(r["day"])[0] for r in to_label).items()))},
         "estimate": round_estimate(to_label), "attribution": ATTRIBUTION,
         "interpretation": "Unreviewed screening sorts the clips; it is never a label."}
     (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -693,13 +808,30 @@ def main() -> None:
                                                  "choose windows from new days only")
     parser.add_argument("--labelled", type=Path, help="With --keep: a file of window IDs already labelled, one per "
                                                      "line; they are left out of to_label.csv")
+    others = [c for c in CAMERAS if c != CAMERA]
+    parser.add_argument("--add-camera", action="append", default=[], choices=others,
+                        help="With --keep: also choose windows from this camera's new scanned days (repeatable)")
+    parser.add_argument("--only-new", action="store_true",
+                        help="With --keep: list only this round's new windows in to_label.csv")
+    parser.add_argument("--pick-scan-days", type=int, metavar="N",
+                        help="Instead of selecting: write N more days of --camera to scan, to --days-file")
+    parser.add_argument("--camera", choices=others, default=others[0], help="With --pick-scan-days")
+    parser.add_argument("--days-file", type=Path, help="With --pick-scan-days (default <round 2>/scan/<camera>-days.txt)")
     args = parser.parse_args()
-    if args.labelled and not args.keep:
-        parser.error("--labelled needs --keep")
+    if args.pick_scan_days:
+        days = pick_scan_days(args.camera, args.pick_scan_days, args.scan, args.seed)
+        path = args.days_file or OUTPUTS / "smartbay-rounds" / "round-2" / "scan" / f"{args.camera}-days.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(f"{d}\n" for d in days), encoding="utf-8", newline="\n")
+        print(json.dumps({"camera": args.camera, "days": days, "count": len(days), "file": path.as_posix()}, indent=2))
+        return
+    if (args.labelled or args.add_camera or args.only_new) and not args.keep:
+        parser.error("--labelled, --add-camera and --only-new need --keep")
     if args.keep:
         root = args.root or OUTPUTS / "smartbay-rounds" / f"round-{kept_round(args.keep) + 1}"
         labelled = frozenset(args.labelled.read_text(encoding="utf-8").split()) if args.labelled else frozenset()
-        summary = select_round(args.scan, root / "selection", args.keep, args.seed, labelled)
+        summary = select_round(args.scan, root / "selection", args.keep, args.seed, labelled,
+                               tuple(args.add_camera), args.only_new)
     else:
         summary = select(args.scan, (args.root or OUTPUTS / f"sam3-cloud-labels-{utc_today()}") / "selection", args.seed)
     print(json.dumps(summary, indent=2))

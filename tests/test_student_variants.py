@@ -128,6 +128,7 @@ def test_compare_puts_every_student_beside_round_one_on_the_same_test_days(round
     sv.train("medium", root, out)
     evaluation = sv.evaluate("medium", root, out)
     assert evaluation["agreement"]["all"]["agreement"] == 1.0
+    assert evaluation["by_camera"]["SmartBayCam1"]["agreement"]["all"] == evaluation["agreement"]["all"]
     assert (out / "medium" / "student" / "rfdetr-medium" / TEST_WINDOW / "frames.jsonl").exists()
     result = sv.compare(root, out)
     students = result["students"]
